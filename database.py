@@ -297,44 +297,96 @@ class Database:
         '''
         return self.execute_query(query, (supplier_id,))
 
+    def get_unique_colors(self):
+        """Получает уникальные цвета товаров"""
+        query = 'SELECT DISTINCT color FROM products WHERE color IS NOT NULL AND color != ""'
+        result = self.execute_query(query)
+        return result if result else [('Черный',), ('Белый',), ('Синий',), ('Красный',)]
 
-# Добавьте эти методы в класс Database в database.py
+    def get_unique_sizes(self):
+        """Получает уникальные размеры товаров"""
+        query = 'SELECT DISTINCT size FROM products WHERE size IS NOT NULL AND size != ""'
+        result = self.execute_query(query)
+        return result if result else [('S',), ('M',), ('L',), ('XL',), ('42',), ('43',)]
 
-def get_unique_colors(self):
-    """Получает уникальные цвета товаров"""
-    query = 'SELECT DISTINCT color FROM products WHERE color IS NOT NULL'
-    return self.execute_query(query)
+    def get_products_grouped(self):
+        """Получает товары сгруппированные по названию с агрегированными данными"""
+        try:
+            query = '''
+                SELECT 
+                    p.name,
+                    p.description,
+                    MIN(p.price) as min_price,
+                    MAX(p.price) as max_price,
+                    GROUP_CONCAT(DISTINCT p.color) as colors,
+                    GROUP_CONCAT(DISTINCT p.size) as sizes,
+                    c.name as category_name,
+                    COUNT(DISTINCT p.product_id) as variants_count,
+                    AVG(p.price) as avg_rating
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.category_id
+                GROUP BY p.name, p.description, c.name
+                HAVING variants_count > 0
+            '''
+            result = self.execute_query(query)
+            return result if result else []
+        except Exception as e:
+            print(f"Ошибка в get_products_grouped: {e}")
+            return []
 
-
-def get_unique_sizes(self):
-    """Получает уникальные размеры товаров"""
-    query = 'SELECT DISTINCT size FROM products WHERE size IS NOT NULL'
-    return self.execute_query(query)
-
-
-def get_products_grouped(self, filters=None):
-    """Получает товары сгруппированные по названию"""
-    query = '''
-        SELECT 
-            name,
-            description,
-            MIN(price) as min_price,
-            MAX(price) as max_price,
-            GROUP_CONCAT(DISTINCT color) as colors,
-            GROUP_CONCAT(DISTINCT size) as sizes,
-            GROUP_CONCAT(DISTINCT model) as models,
-            category_name,
-            supplier_name
-        FROM (
+    def get_product_variants(self, product_name):
+        """Получает все варианты конкретного товара"""
+        query = '''
             SELECT 
-                p.product_id, p.name, p.description, p.price, p.size, p.model,
-                c.name as category_name, s.name as supplier_name,
-                COALESCE(p.color, 'Не указан') as color
+                p.product_id, p.name, p.description, p.price, p.size, p.color, 
+                p.model, c.name as category_name, s.name as supplier_name,
+                sh.quantity as stock_quantity
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.category_id
             LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
-        )
-        GROUP BY name, description, category_name, supplier_name
-    '''
+            LEFT JOIN shops sh ON p.product_id = sh.product_id
+            WHERE p.name = ?
+        '''
+        return self.execute_query(query, (product_name,))
 
-    return self.execute_query(query)
+    def get_popular_products(self, limit=8):
+        """Получает популярные товары для главной страницы"""
+        try:
+            query = '''
+                SELECT DISTINCT 
+                    p.product_id, p.name, p.description, p.price, p.size, p.model,
+                    c.name as category_name, s.name as supplier_name,
+                    pic.pic_id as image_path
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.category_id
+                LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
+                LEFT JOIN picture pic ON p.product_id = pic.product_id
+                LEFT JOIN cart ct ON p.product_id = ct.product_id
+                GROUP BY p.product_id
+                ORDER BY COUNT(ct.product_id) DESC, p.product_id
+                LIMIT ?
+            '''
+            result = self.execute_query(query, (limit,))
+            return result if result else []
+        except:
+            # Если запрос не работает, возвращаем обычные товары
+            return self.get_products()[:limit]
+
+    def check_product_availability(self, product_id, color, size):
+        """Проверяет наличие товара на складе"""
+        query = '''
+            SELECT sh.quantity 
+            FROM shops sh
+            JOIN products p ON sh.product_id = p.product_id
+            WHERE p.product_id = ? AND p.color = ? AND p.size = ?
+        '''
+        result = self.execute_query(query, (product_id, color, size))
+        if result and result[0][0] > 0:
+            return result[0][0]
+        return 0
+
+    def get_categories(self):
+        """Получает список категорий"""
+        query = 'SELECT category_id, name, description FROM categories'
+        result = self.execute_query(query)
+        return result if result else [(1, 'Обувь', ''), (2, 'Одежда', ''), (3, 'Аксессуары', '')]

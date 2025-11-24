@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from database import Database
-from catalog import CatalogWindow
+from catalog import ProductDetailWindow as CatalogWindow
+from product_detail import ProductDetailWindow
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -28,18 +29,52 @@ class SportsShopApp:
         """Показ каталога товаров"""
         self.clear_main_frame()
 
-        # Создаем окно каталога
         try:
-            self.catalog_window = CatalogWindow(self.content_frame, self.current_user_id)
+            # Создаем каталог напрямую в content_frame
+            catalog_window = CatalogWindow(self.content_frame, self.current_user_id)
             print("Каталог успешно загружен")
         except Exception as e:
             print(f"Ошибка загрузки каталога: {e}")
+            # Показываем упрощенный каталог
+            self.show_simple_catalog()
+
+    def show_simple_catalog(self):
+        """Упрощенный каталог если основной не работает"""
+        # Заголовок
+        ctk.CTkLabel(
+            self.content_frame, text="Каталог товаров",
+            font=ctk.CTkFont("Arial", 28, weight="bold")
+        ).pack(pady=20)
+
+        # Загружаем товары
+        try:
+            products = self.db.get_products()
+            if not products:
+                ctk.CTkLabel(
+                    self.content_frame, text="Товары не найдены",
+                    font=ctk.CTkFont("Arial", 16), text_color="red"
+                ).pack(pady=50)
+                return
+        except Exception as e:
+            print(f"Ошибка загрузки товаров: {e}")
             ctk.CTkLabel(
-                self.content_frame,
-                text="Ошибка загрузки каталога",
-                font=ctk.CTkFont("Arial", 16),
-                text_color="red"
+                self.content_frame, text="Ошибка загрузки товаров",
+                font=ctk.CTkFont("Arial", 16), text_color="red"
             ).pack(pady=50)
+            return
+
+        # Сетка товаров
+        products_grid = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        products_grid.pack(fill="both", expand=True, padx=40, pady=20)
+
+        # Создаем 4 колонки
+        for i, product in enumerate(products):
+            if i % 4 == 0:
+                row_frame = ctk.CTkFrame(products_grid, fg_color="transparent")
+                row_frame.pack(fill="x", pady=10)
+
+            product_card = self.create_product_card(row_frame, product)
+            product_card.pack(side="left", padx=10)
 
     def load_products_data(self):
         """Загрузка товаров из базы"""
@@ -56,7 +91,7 @@ class SportsShopApp:
         nav_frame.pack(fill="x")
         nav_frame.pack_propagate(False)
 
-        # Левая часть
+        # Левая часть - только логотип
         left_frame = ctk.CTkFrame(nav_frame, fg_color="transparent")
         left_frame.pack(side="left", padx=20, pady=20)
 
@@ -66,12 +101,10 @@ class SportsShopApp:
             text_color="white"
         ).pack(side="left", padx=(0, 40))
 
-        # Кнопки навигации
+        # Кнопки навигации (только основные)
         for text, command in [
             ("Главная", self.show_home),
             ("Каталог", self.show_catalog),
-            ("Корзина", self.show_cart),
-            ("Избранное", self.show_favorites),
             ("Адреса", self.show_addresses)
         ]:
             btn = ctk.CTkButton(
@@ -83,7 +116,7 @@ class SportsShopApp:
             )
             btn.pack(side="left", padx=10)
 
-        # Правая часть с иконками
+        # Правая часть с иконками (профиль, избранное, корзина)
         right_frame = ctk.CTkFrame(nav_frame, fg_color="transparent")
         right_frame.pack(side="right", padx=20, pady=20)
 
@@ -97,7 +130,7 @@ class SportsShopApp:
         )
         self.profile_btn.pack(side="left", padx=10)
 
-        # Остальные иконки
+        # Остальные иконки (только избранное и корзина)
         for icon, command in [
             ("❤️ Избранное", self.show_favorites),
             ("🛒 Корзина", self.show_cart)
@@ -152,8 +185,45 @@ class SportsShopApp:
             text_color="white"
         ).pack(pady=5)
 
-        # Товары
-        self.show_products()
+        # Популярные товары
+        self.show_popular_products()
+
+    def show_popular_products(self):
+        """Показ популярных товаров"""
+        # Заголовок
+        ctk.CTkLabel(
+            self.content_frame, text="Сейчас популярно:",
+            font=ctk.CTkFont("Arial", 28, weight="bold")
+        ).pack(pady=20)
+
+        # Загружаем популярные товары
+        try:
+            popular_products = self.db.get_popular_products(8)
+        except:
+            popular_products = self.products[:8] if len(self.products) > 8 else self.products
+
+        if not popular_products:
+            ctk.CTkLabel(
+                self.content_frame, text="Популярные товары не найдены",
+                font=ctk.CTkFont("Arial", 16), text_color="red"
+            ).pack(pady=50)
+            return
+
+        # Сетка товаров
+        products_grid = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        products_grid.pack(fill="both", expand=True, padx=40, pady=20)
+
+        # Создаем 4 колонки
+        row, col = 0, 0
+        for i, product in enumerate(popular_products):
+            if i % 4 == 0:
+                row_frame = ctk.CTkFrame(products_grid, fg_color="transparent")
+                row_frame.pack(fill="x", pady=10)
+                col = 0
+
+            product_card = self.create_product_card(row_frame, product)
+            product_card.pack(side="left", padx=10)
+            col += 1
 
     def show_products(self):
         """Показ товаров"""
