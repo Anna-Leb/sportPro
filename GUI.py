@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from database import Database
-from catalog import ProductDetailWindow as CatalogWindow
+from catalog import CatalogWindow
 from product_detail import ProductDetailWindow
 
 ctk.set_appearance_mode("light")
@@ -30,8 +30,8 @@ class SportsShopApp:
         self.clear_main_frame()
 
         try:
-            # Создаем каталог напрямую в content_frame
-            catalog_window = CatalogWindow(self.content_frame, self.current_user_id)
+            # Создаем каталог напрямую в content_frame БЕЗ дополнительных оберток
+            CatalogWindow(self.content_frame, self.current_user_id)
             print("Каталог успешно загружен")
         except Exception as e:
             print(f"Ошибка загрузки каталога: {e}")
@@ -145,11 +145,10 @@ class SportsShopApp:
             btn.pack(side="left", padx=10)
 
     def create_main_content(self):
-        """Создание основной области"""
-        self.content_frame = ctk.CTkScrollableFrame(
+        """Создание основной области БЕЗ прокрутки"""
+        self.content_frame = ctk.CTkFrame(
             self.window,
-            fg_color="transparent",
-            scrollbar_button_color="#2E86AB"
+            fg_color="transparent"
         )
         self.content_frame.pack(fill="both", expand=True, padx=0, pady=0)
 
@@ -189,7 +188,7 @@ class SportsShopApp:
         self.show_popular_products()
 
     def show_popular_products(self):
-        """Показ популярных товаров"""
+        """Показ популярных товаров на главной странице"""
         # Заголовок
         ctk.CTkLabel(
             self.content_frame, text="Сейчас популярно:",
@@ -199,7 +198,8 @@ class SportsShopApp:
         # Загружаем популярные товары
         try:
             popular_products = self.db.get_popular_products(8)
-        except:
+        except Exception as e:
+            print(f"Ошибка загрузки популярных товаров: {e}")
             popular_products = self.products[:8] if len(self.products) > 8 else self.products
 
         if not popular_products:
@@ -214,16 +214,13 @@ class SportsShopApp:
         products_grid.pack(fill="both", expand=True, padx=40, pady=20)
 
         # Создаем 4 колонки
-        row, col = 0, 0
         for i, product in enumerate(popular_products):
             if i % 4 == 0:
                 row_frame = ctk.CTkFrame(products_grid, fg_color="transparent")
                 row_frame.pack(fill="x", pady=10)
-                col = 0
 
             product_card = self.create_product_card(row_frame, product)
             product_card.pack(side="left", padx=10)
-            col += 1
 
     def show_products(self):
         """Показ товаров"""
@@ -257,7 +254,8 @@ class SportsShopApp:
             col += 1
 
     def create_product_card(self, parent, product):
-        """Создание карточки товара"""
+        """Создает карточку товара с правильными индексами"""
+        # Распаковываем с правильными индексами
         (product_id, name, description, price, size, model,
          category, supplier, image_path) = product
 
@@ -311,7 +309,7 @@ class SportsShopApp:
             justify="left", text_color="#333333"
         ).pack(anchor="w", pady=(0, 8))
 
-        # Характеристики
+        # Характеристики (используем model как цвет)
         if size:
             ctk.CTkLabel(
                 info_frame, text=f"Размер: {size}",
@@ -320,11 +318,11 @@ class SportsShopApp:
 
         if model:
             ctk.CTkLabel(
-                info_frame, text=f"Модель: {model}",
+                info_frame, text=f"Цвет: {model}",
                 font=ctk.CTkFont("Arial", 12), text_color="#666666"
             ).pack(anchor="w", pady=2)
 
-        # Кнопка "В корзину"
+        # Кнопка "В корзину" - ВАЖНО: убедитесь что эта часть есть!
         ctk.CTkButton(
             info_frame, text="В корзину",
             command=lambda pid=product_id: self.add_to_cart(pid),
