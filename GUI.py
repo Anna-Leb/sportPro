@@ -8,127 +8,6 @@ ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
 
-class LoginWindow(ctk.CTkToplevel):
-    def __init__(self, parent, db, on_login_success):
-        super().__init__(parent)
-        self.db = db
-        self.on_login_success = on_login_success
-
-        self.title("Вход в систему")
-        self.geometry("400x300")
-        self.resizable(False, False)
-
-        self.create_widgets()
-
-    def create_widgets(self):
-        # Заголовок
-        title_label = ctk.CTkLabel(self, text="Вход в аккаунт", font=ctk.CTkFont("Arial", 20, weight="bold"))
-        title_label.pack(pady=20)
-
-        # Поле логина
-        self.login_entry = ctk.CTkEntry(self, placeholder_text="Логин", width=250, height=40)
-        self.login_entry.pack(pady=10)
-
-        # Поле пароля
-        self.password_entry = ctk.CTkEntry(self, placeholder_text="Пароль", show="*", width=250, height=40)
-        self.password_entry.pack(pady=10)
-
-        # Кнопка входа
-        login_btn = ctk.CTkButton(self, text="Войти", command=self.login, width=250, height=40)
-        login_btn.pack(pady=10)
-
-        # Ссылка на регистрацию
-        register_label = ctk.CTkLabel(self, text="Нет аккаунта? Зарегистрироваться",
-                                      text_color="#2E86AB", cursor="hand2")
-        register_label.pack(pady=10)
-        register_label.bind("<Button-1>", lambda e: self.open_register())
-
-        # Сообщение об ошибке
-        self.error_label = ctk.CTkLabel(self, text="", text_color="red")
-        self.error_label.pack(pady=5)
-
-    def login(self):
-        login = self.login_entry.get().strip()
-        password = self.password_entry.get().strip()
-
-        if not login or not password:
-            self.error_label.configure(text="Заполните все поля")
-            return
-
-        user = self.db.get_user_by_credentials(login, password)
-        if user:
-            self.on_login_success(user[0], user[1])  # user_id, login
-            self.destroy()
-        else:
-            self.error_label.configure(text="Неверный логин или пароль")
-
-    def open_register(self):
-        RegisterWindow(self, self.db)
-
-
-class RegisterWindow(ctk.CTkToplevel):
-    def __init__(self, parent, db):
-        super().__init__(parent)
-        self.db = db
-
-        self.title("Регистрация")
-        self.geometry("400x350")
-        self.resizable(False, False)
-
-        self.create_widgets()
-
-    def create_widgets(self):
-        # Заголовок
-        title_label = ctk.CTkLabel(self, text="Регистрация", font=ctk.CTkFont("Arial", 20, weight="bold"))
-        title_label.pack(pady=20)
-
-        # Поле логина
-        self.login_entry = ctk.CTkEntry(self, placeholder_text="Логин", width=250, height=40)
-        self.login_entry.pack(pady=8)
-
-        # Поле пароля
-        self.password_entry = ctk.CTkEntry(self, placeholder_text="Пароль", show="*", width=250, height=40)
-        self.password_entry.pack(pady=8)
-
-        # Подтверждение пароля
-        self.confirm_password_entry = ctk.CTkEntry(self, placeholder_text="Подтвердите пароль",
-                                                   show="*", width=250, height=40)
-        self.confirm_password_entry.pack(pady=8)
-
-        # Кнопка регистрации
-        register_btn = ctk.CTkButton(self, text="Зарегистрироваться", command=self.register,
-                                     width=250, height=40)
-        register_btn.pack(pady=10)
-
-        # Сообщение об ошибке/успехе
-        self.message_label = ctk.CTkLabel(self, text="", text_color="red")
-        self.message_label.pack(pady=5)
-
-    def register(self):
-        login = self.login_entry.get().strip()
-        password = self.password_entry.get().strip()
-        confirm_password = self.confirm_password_entry.get().strip()
-
-        if not login or not password:
-            self.message_label.configure(text="Заполните все поля", text_color="red")
-            return
-
-        if password != confirm_password:
-            self.message_label.configure(text="Пароли не совпадают", text_color="red")
-            return
-
-        if self.db.check_user_exists(login):
-            self.message_label.configure(text="Пользователь с таким логином уже существует", text_color="red")
-            return
-
-        result = self.db.create_user(login, password)
-        if result:
-            self.message_label.configure(text="Регистрация успешна! Теперь вы можете войти.", text_color="green")
-            self.after(2000, self.destroy)
-        else:
-            self.message_label.configure(text="Ошибка регистрации", text_color="red")
-
-
 class SportsShopApp:
     def __init__(self):
         self.window = ctk.CTk()
@@ -147,21 +26,342 @@ class SportsShopApp:
         self.create_top_navbar()
 
         # Основная область контента
-        self.create_main_content()
+        self.main_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+        self.main_frame.pack(fill="both", expand=True, padx=0, pady=0)
 
-        # Показываем окно входа при запуске
-        self.show_login_window()
+        # Фрейм для авторизации (изначально скрыт)
+        self.auth_frame = None
 
-    def show_login_window(self):
-        """Показывает окно входа"""
-        LoginWindow(self.window, self.db, self.on_login_success)
+        # По умолчанию показываем главную страницу
+        self.show_home()
+
+    # === МЕТОДЫ АВТОРИЗАЦИИ ===
+    def create_auth_frame(self):
+        """Создает фрейм авторизации/регистрации"""
+        if self.auth_frame:
+            self.auth_frame.destroy()
+
+        self.auth_frame = ctk.CTkFrame(
+            self.window,
+            width=300,
+            height=400,
+            corner_radius=15,
+            fg_color="white",
+            border_width=1,
+            border_color="#E0E0E0"
+        )
+        self.auth_frame.place(relx=0.5, rely=0.5, anchor="center")
+        self.auth_frame.pack_propagate(False)
+
+        # По умолчанию показываем форму входа
+        self.show_login_form()
+
+    def show_login_form(self):
+        """Показывает форму входа"""
+        if not self.auth_frame:
+            return
+
+        # Очищаем фрейм
+        for widget in self.auth_frame.winfo_children():
+            widget.destroy()
+
+        # Заголовок
+        title_label = ctk.CTkLabel(
+            self.auth_frame,
+            text="Вход в аккаунт",
+            font=ctk.CTkFont("Arial", 20, weight="bold"),
+            text_color="#333333"
+        )
+        title_label.pack(pady=30)
+
+        # Поле логина
+        self.login_entry = ctk.CTkEntry(
+            self.auth_frame,
+            placeholder_text="Логин",
+            width=220,
+            height=40,
+            fg_color="#F8F9FA",
+            border_color="#E0E0E0"
+        )
+        self.login_entry.pack(pady=10)
+
+        # Поле пароля
+        self.password_entry = ctk.CTkEntry(
+            self.auth_frame,
+            placeholder_text="Пароль",
+            show="*",
+            width=220,
+            height=40,
+            fg_color="#F8F9FA",
+            border_color="#E0E0E0"
+        )
+        self.password_entry.pack(pady=10)
+
+        # Кнопка входа
+        login_btn = ctk.CTkButton(
+            self.auth_frame,
+            text="Войти",
+            command=self.login,
+            width=220,
+            height=40,
+            fg_color="#2E86AB",
+            hover_color="#1B5E7D"
+        )
+        login_btn.pack(pady=10)
+
+        # Ссылка на регистрацию
+        register_label = ctk.CTkLabel(
+            self.auth_frame,
+            text="Нет аккаунта? Зарегистрироваться",
+            text_color="#2E86AB",
+            cursor="hand2",
+            font=ctk.CTkFont("Arial", 12)
+        )
+        register_label.pack(pady=10)
+        register_label.bind("<Button-1>", lambda e: self.show_register_form())
+
+        # Сообщение об ошибке
+        self.error_label = ctk.CTkLabel(
+            self.auth_frame,
+            text="",
+            text_color="red",
+            font=ctk.CTkFont("Arial", 11)
+        )
+        self.error_label.pack(pady=5)
+
+        # Кнопка закрытия
+        close_btn = ctk.CTkButton(
+            self.auth_frame,
+            text="✕",
+            command=self.hide_auth_frame,
+            width=30,
+            height=30,
+            fg_color="transparent",
+            hover_color="#F0F0F0",
+            text_color="#666666",
+            font=ctk.CTkFont("Arial", 14)
+        )
+        close_btn.place(relx=0.9, rely=0.05, anchor="center")
+
+    def show_register_form(self):
+        """Показывает форму регистрации"""
+        if not self.auth_frame:
+            return
+
+        # Очищаем фрейм
+        for widget in self.auth_frame.winfo_children():
+            widget.destroy()
+
+        # Заголовок
+        title_label = ctk.CTkLabel(
+            self.auth_frame,
+            text="Регистрация",
+            font=ctk.CTkFont("Arial", 20, weight="bold"),
+            text_color="#333333"
+        )
+        title_label.pack(pady=25)
+
+        # Поле логина
+        self.reg_login_entry = ctk.CTkEntry(
+            self.auth_frame,
+            placeholder_text="Логин",
+            width=220,
+            height=40,
+            fg_color="#F8F9FA",
+            border_color="#E0E0E0"
+        )
+        self.reg_login_entry.pack(pady=8)
+
+        # Поле пароля
+        self.reg_password_entry = ctk.CTkEntry(
+            self.auth_frame,
+            placeholder_text="Пароль",
+            show="*",
+            width=220,
+            height=40,
+            fg_color="#F8F9FA",
+            border_color="#E0E0E0"
+        )
+        self.reg_password_entry.pack(pady=8)
+
+        # Подтверждение пароля
+        self.reg_confirm_password_entry = ctk.CTkEntry(
+            self.auth_frame,
+            placeholder_text="Подтвердите пароль",
+            show="*",
+            width=220,
+            height=40,
+            fg_color="#F8F9FA",
+            border_color="#E0E0E0"
+        )
+        self.reg_confirm_password_entry.pack(pady=8)
+
+        # Кнопка регистрации
+        register_btn = ctk.CTkButton(
+            self.auth_frame,
+            text="Зарегистрироваться",
+            command=self.register,
+            width=220,
+            height=40,
+            fg_color="#2E86AB",
+            hover_color="#1B5E7D"
+        )
+        register_btn.pack(pady=10)
+
+        # Ссылка на вход
+        login_label = ctk.CTkLabel(
+            self.auth_frame,
+            text="Уже есть аккаунт? Войти",
+            text_color="#2E86AB",
+            cursor="hand2",
+            font=ctk.CTkFont("Arial", 12)
+        )
+        login_label.pack(pady=10)
+        login_label.bind("<Button-1>", lambda e: self.show_login_form())
+
+        # Сообщение
+        self.reg_message_label = ctk.CTkLabel(
+            self.auth_frame,
+            text="",
+            text_color="red",
+            font=ctk.CTkFont("Arial", 11)
+        )
+        self.reg_message_label.pack(pady=5)
+
+        # Кнопка закрытия
+        close_btn = ctk.CTkButton(
+            self.auth_frame,
+            text="✕",
+            command=self.hide_auth_frame,
+            width=30,
+            height=30,
+            fg_color="transparent",
+            hover_color="#F0F0F0",
+            text_color="#666666",
+            font=ctk.CTkFont("Arial", 14)
+        )
+        close_btn.place(relx=0.9, rely=0.05, anchor="center")
+
+    def login(self):
+        """Обработка входа"""
+        login = self.login_entry.get().strip()
+        password = self.password_entry.get().strip()
+
+        if not login or not password:
+            self.error_label.configure(text="Заполните все поля")
+            return
+
+        user = self.db.get_user_by_credentials(login, password)
+        if user:
+            self.on_login_success(user[0], user[1])
+            self.hide_auth_frame()
+        else:
+            self.error_label.configure(text="Неверный логин или пароль")
+
+    def register(self):
+        """Обработка регистрации"""
+        login = self.reg_login_entry.get().strip()
+        password = self.reg_password_entry.get().strip()
+        confirm_password = self.reg_confirm_password_entry.get().strip()
+
+        if not login or not password:
+            self.reg_message_label.configure(text="Заполните все поля", text_color="red")
+            return
+
+        if password != confirm_password:
+            self.reg_message_label.configure(text="Пароли не совпадают", text_color="red")
+            return
+
+        if self.db.check_user_exists(login):
+            self.reg_message_label.configure(text="Пользователь с таким логином уже существует", text_color="red")
+            return
+
+        result = self.db.create_user(login, password)
+        if result:
+            # Автоматически входим после регистрации
+            user = self.db.get_user_by_credentials(login, password)
+            if user:
+                self.on_login_success(user[0], user[1])
+                self.hide_auth_frame()
+                self.show_notification("Регистрация успешна!")
+        else:
+            self.reg_message_label.configure(text="Ошибка регистрации", text_color="red")
+
+    def hide_auth_frame(self):
+        """Скрывает фрейм авторизации"""
+        if self.auth_frame:
+            self.auth_frame.destroy()
+            self.auth_frame = None
+
+    def show_profile_dialog(self):
+        """Показывает диалог профиля или авторизации"""
+        if self.current_user_id:
+            # Показываем меню для авторизованного пользователя
+            self.show_user_menu()
+        else:
+            # Показываем форму авторизации
+            self.create_auth_frame()
+
+    def show_user_menu(self):
+        """Показывает меню пользователя"""
+        menu_frame = ctk.CTkFrame(
+            self.window,
+            width=200,
+            height=120,
+            corner_radius=10,
+            fg_color="white",
+            border_width=1,
+            border_color="#E0E0E0"
+        )
+        menu_frame.place(relx=0.9, rely=0.1, anchor="ne")
+        menu_frame.pack_propagate(False)
+
+        user_label = ctk.CTkLabel(
+            menu_frame,
+            text=f"👤 {self.current_user_login}",
+            font=ctk.CTkFont("Arial", 14, weight="bold"),
+            text_color="#333333"
+        )
+        user_label.pack(pady=15)
+
+        logout_btn = ctk.CTkButton(
+            menu_frame,
+            text="Выйти",
+            command=lambda: [menu_frame.destroy(), self.logout()],
+            width=160,
+            height=35,
+            fg_color="#E63946",
+            hover_color="#C1121F"
+        )
+        logout_btn.pack(pady=5)
+
+        close_btn = ctk.CTkButton(
+            menu_frame,
+            text="Закрыть",
+            command=menu_frame.destroy,
+            width=160,
+            height=35,
+            fg_color="transparent",
+            hover_color="#F0F0F0",
+            text_color="#666666",
+            border_color="#E0E0E0",
+            border_width=1
+        )
+        close_btn.pack(pady=5)
 
     def on_login_success(self, user_id, login):
         """Обработка успешного входа"""
         self.current_user_id = user_id
         self.current_user_login = login
         self.update_navbar_profile()
-        self.show_home()
+        self.show_notification(f"Добро пожаловать, {login}!")
+
+    def logout(self):
+        """Выход из системы"""
+        self.current_user_id = None
+        self.current_user_login = None
+        self.update_navbar_profile()
+        self.show_notification("Вы вышли из системы")
 
     def update_navbar_profile(self):
         """Обновляет отображение профиля в навбаре"""
@@ -170,18 +370,13 @@ class SportsShopApp:
         else:
             self.profile_btn.configure(text="👤")
 
-    def logout(self):
-        """Выход из системы"""
-        self.current_user_id = None
-        self.current_user_login = None
-        self.update_navbar_profile()
-        self.show_login_window()
-
+    # === ОСНОВНЫЕ МЕТОДЫ ПРИЛОЖЕНИЯ ===
     def load_products_data(self):
         """Загрузка данных о товарах из базы"""
         try:
             self.products = self.db.get_products()
             self.categories = self.db.get_categories()
+            print(f"Загружено товаров: {len(self.products)}")
 
         except Exception as e:
             print(f"Ошибка загрузки данных: {e}")
@@ -198,10 +393,77 @@ class SportsShopApp:
         self.nav_frame.pack_propagate(False)
 
         # Левая часть навигации
-        self.create_left_nav()
+        left_frame = ctk.CTkFrame(self.nav_frame, fg_color="transparent")
+        left_frame.pack(side="left", padx=30, pady=20)
+
+        # Логотип
+        self.logo_label = ctk.CTkLabel(
+            left_frame,
+            text="SPORTSHOP",
+            font=ctk.CTkFont("Arial", 22, weight="bold"),
+            text_color="white"
+        )
+        self.logo_label.pack(side="left", padx=(0, 40))
+
+        # Основные вкладки навигации
+        nav_buttons = [
+            ("Главная", self.show_home),
+            ("Каталог", self.show_catalog),
+            ("Корзина", self.show_cart),
+            ("Адреса", self.show_addresses)
+        ]
+
+        for text, command in nav_buttons:
+            btn = ctk.CTkButton(
+                left_frame,
+                text=text,
+                font=ctk.CTkFont("Arial", 15),
+                fg_color="transparent",
+                hover_color="#1B5E7D",
+                text_color="white",
+                command=command,
+                width=90,
+                height=30
+            )
+            btn.pack(side="left", padx=12)
 
         # Правая часть навигации (иконки)
-        self.create_right_nav()
+        right_frame = ctk.CTkFrame(self.nav_frame, fg_color="transparent")
+        right_frame.pack(side="right", padx=30, pady=20)
+
+        # Иконка профиля
+        self.profile_btn = ctk.CTkButton(
+            right_frame,
+            text="👤",
+            font=ctk.CTkFont("Arial", 18),
+            width=45,
+            height=35,
+            fg_color="transparent",
+            hover_color="#1B5E7D",
+            text_color="white",
+            command=self.show_profile_dialog
+        )
+        self.profile_btn.pack(side="left", padx=10)
+
+        # Остальные иконки
+        icon_buttons = [
+            ("❤️", "Избранное", self.show_favorites),
+            ("🛒", "Корзина", self.show_cart_icon)
+        ]
+
+        for icon, tooltip, command in icon_buttons:
+            btn = ctk.CTkButton(
+                right_frame,
+                text=icon,
+                font=ctk.CTkFont("Arial", 18),
+                fg_color="transparent",
+                hover_color="#1B5E7D",
+                text_color="white",
+                command=command,
+                width=45,
+                height=35
+            )
+            btn.pack(side="left", padx=10)
 
     def create_left_nav(self):
         """Левая часть навигационной панели"""
@@ -381,15 +643,10 @@ class SportsShopApp:
             height=350
         )
         scroll_frame.pack(fill="both", expand=True, padx=40, pady=20)
-        scroll_frame.pack_propagate(False)
-
-        # Фрейм для размещения карточек в ряд
-        products_row = ctk.CTkFrame(scroll_frame, fg_color="transparent")
-        products_row.pack(fill="both", expand=True)
 
         # Отображаем товары из базы данных
         for product in self.products:
-            product_frame = self.create_wb_product_card(products_row, product)
+            product_frame = self.create_wb_product_card(scroll_frame, product)
             product_frame.pack(side="left", padx=10, pady=5)
 
         # Добавляем кнопку "В корзину" внизу экрана
@@ -425,7 +682,6 @@ class SportsShopApp:
                     text_color="#666666"
                 )
                 count_label.pack(pady=5)
-
 
     def create_wb_product_card(self, parent, product):
         """Создание карточки товара в стиле Wildberries"""
@@ -464,7 +720,7 @@ class SportsShopApp:
             fg_color="white",
             hover_color="#F0F0F0",
             text_color="#FF4444" if is_favorite else "#666666",
-            command=lambda pid=product_id, btn=favorite_btn: self.toggle_favorite(pid, btn)
+            command=lambda pid=product_id: self.toggle_favorite_simple(pid)
         )
         favorite_btn.place(relx=0.85, rely=0.2, anchor="center")
 
@@ -503,26 +759,23 @@ class SportsShopApp:
         name_label.pack(anchor="w", pady=(0, 5))
 
         # Характеристики
-        specs_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-        specs_frame.pack(anchor="w", fill="x", pady=(0, 8))
-
         if size:
             size_label = ctk.CTkLabel(
-                specs_frame,
+                info_frame,
                 text=f"Размер: {size}",
                 font=ctk.CTkFont("Arial", 10),
                 text_color="#666666"
             )
-            size_label.pack(anchor="w")
+            size_label.pack(anchor="w", pady=(0, 2))
 
         if model:
             model_label = ctk.CTkLabel(
-                specs_frame,
+                info_frame,
                 text=f"Модель: {model}",
                 font=ctk.CTkFont("Arial", 10),
                 text_color="#666666"
             )
-            model_label.pack(anchor="w")
+            model_label.pack(anchor="w", pady=(0, 2))
 
         # Бренд/поставщик
         if supplier:
@@ -548,14 +801,15 @@ class SportsShopApp:
 
         return card_frame
 
-    def toggle_favorite(self, product_id, button):
-        """Добавить/удалить из избранного (без перезагрузки страницы)"""
+    def toggle_favorite_simple(self, product_id):
+        """Простой метод для переключения избранного"""
         if product_id in self.favorites:
             self.favorites.remove(product_id)
-            button.configure(text="🤍", text_color="#666666")
         else:
             self.favorites.add(product_id)
-            button.configure(text="❤️", text_color="#FF4444")
+
+        # Пересоздаем блок товаров для обновления состояния
+        self.show_popular_products()
 
         # Показываем уведомление
         action = "добавлен" if product_id in self.favorites else "удален"
@@ -589,10 +843,8 @@ class SportsShopApp:
         )
         notification.place(relx=0.5, rely=0.1, anchor="center")
 
-        # Убираем уведомление через 2 секунды
         self.window.after(2000, notification.destroy)
 
-    # Остальные методы (show_catalog, show_cart, show_addresses, show_favorites) остаются без изменений
     def show_catalog(self):
         """Показать полный каталог товаров"""
         self.clear_main_frame()

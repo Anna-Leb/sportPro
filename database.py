@@ -49,8 +49,11 @@ class Database:
 
     def create_user(self, login, password):
         """Создает нового пользователя"""
-        query = 'INSERT INTO users (login, password) VALUES (?, ?)'
-        return self.execute_query(query, (login, password))
+        try:
+            query = 'INSERT INTO users (login, password) VALUES (?, ?)'
+            return self.execute_query(query, (login, password))
+        except sqlite3.IntegrityError:
+            return None  # Пользователь уже существует
 
     def check_user_exists(self, login):
         """Проверяет, существует ли пользователь с таким логином"""
@@ -186,6 +189,10 @@ class Database:
             ORDER BY o.order_date DESC
         '''
         return self.execute_query(query, (user_id,))
+
+    def show_notification(self, message):
+        """Показывает уведомление (заглушка)"""
+        print(f"Уведомление: {message}")
 
     def get_order_details(self, order_id):
         """Получает детали заказа"""
