@@ -100,15 +100,15 @@ class Database:
         return self.execute_query(query)
 
     # === КОРЗИНА ===
-    def get_user_cart(self, user_id):
-        """Получает корзину пользователя"""
+    def get_user_cart_active(self, user_id):
+        """Получает корзину пользователя только с товарами quantity > 0"""
         query = '''
             SELECT c.cart_id, p.product_id, p.name, p.price, c.quantity, 
                    (p.price * c.quantity) as total, pic.pic_id as image_path
             FROM cart c
             JOIN products p ON c.product_id = p.product_id
             LEFT JOIN picture pic ON p.product_id = pic.product_id
-            WHERE c.user_id = ?
+            WHERE c.user_id = ? AND c.quantity > 0
         '''
         return self.execute_query(query, (user_id,))
 
@@ -137,6 +137,42 @@ class Database:
         """Очищает корзину пользователя"""
         query = 'DELETE FROM cart WHERE user_id = ?'
         return self.execute_query(query, (user_id,))
+
+    # === ИЗБРАННОЕ ===
+    def add_to_favorites(self, user_id, product_id):
+        """Добавляет товар в избранное (с quantity = 0)"""
+        # Проверяем, есть ли уже товар в избранном
+        check_query = 'SELECT cart_id FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
+        existing = self.execute_query(check_query, (user_id, product_id))
+
+        if not existing:
+            # Добавляем в корзину с флагом favorite=1 и quantity=0
+            insert_query = 'INSERT INTO cart (user_id, product_id, quantity, favorite) VALUES (?, ?, 0, 1)'
+            return self.execute_query(insert_query, (user_id, product_id))
+        return True
+
+    def remove_from_favorites(self, user_id, product_id):
+        """Удаляет товар из избранного"""
+        query = 'DELETE FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
+        return self.execute_query(query, (user_id, product_id))
+
+    def get_user_favorites(self, user_id):
+        """Получает избранные товары пользователя (только favorite=1)"""
+        query = '''
+            SELECT c.cart_id, p.product_id, p.name, p.description, p.price, p.size, p.model,
+                   c.quantity, (p.price * c.quantity) as total, pic.pic_id as image_path
+            FROM cart c
+            JOIN products p ON c.product_id = p.product_id
+            LEFT JOIN picture pic ON p.product_id = pic.product_id
+            WHERE c.user_id = ? AND c.favorite = 1
+        '''
+        return self.execute_query(query, (user_id,))
+
+    def is_product_in_favorites(self, user_id, product_id):
+        """Проверяет, есть ли товар в избранном"""
+        query = 'SELECT cart_id FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
+        result = self.execute_query(query, (user_id, product_id))
+        return bool(result)
 
     # === ЗАКАЗЫ ===
     def create_order(self, user_id, cart_items):
@@ -190,10 +226,6 @@ class Database:
         '''
         return self.execute_query(query, (user_id,))
 
-    def show_notification(self, message):
-        """Показывает уведомление (заглушка)"""
-        print(f"Уведомление: {message}")
-
     def get_order_details(self, order_id):
         """Получает детали заказа"""
         query = '''
@@ -204,43 +236,12 @@ class Database:
         '''
         return self.execute_query(query, (order_id,))
 
-    # === ИЗБРАННОЕ ===
-    def add_to_favorites(self, user_id, product_id):
-        """Добавляет товар в избранное"""
-        # Проверяем, есть ли уже товар в избранном
-        check_query = 'SELECT cart_id FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
-        existing = self.execute_query(check_query, (user_id, product_id))
+    # === МАГАЗИНЫ ===
+    def get_unique_shop_addresses(self):
+        """Получает уникальные адреса магазинов"""
+        query = 'SELECT DISTINCT address FROM shops ORDER BY address'
+        return self.execute_query(query)
 
-        if not existing:
-            # Добавляем в корзину с флагом favorite=1
-            insert_query = 'INSERT INTO cart (user_id, product_id, quantity, favorite) VALUES (?, ?, 0, 1)'
-            return self.execute_query(insert_query, (user_id, product_id))
-        return True
-
-    def remove_from_favorites(self, user_id, product_id):
-        """Удаляет товар из избранного"""
-        query = 'DELETE FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
-        return self.execute_query(query, (user_id, product_id))
-
-    def get_user_favorites(self, user_id):
-        """Получает избранные товары пользователя"""
-        query = '''
-            SELECT c.cart_id, p.product_id, p.name, p.description, p.price, p.size, p.model,
-                   c.quantity, (p.price * c.quantity) as total, pic.pic_id as image_path
-            FROM cart c
-            JOIN products p ON c.product_id = p.product_id
-            LEFT JOIN picture pic ON p.product_id = pic.product_id
-            WHERE c.user_id = ? AND c.favorite = 1
-        '''
-        return self.execute_query(query, (user_id,))
-
-    def is_product_in_favorites(self, user_id, product_id):
-        """Проверяет, есть ли товар в избранном"""
-        query = 'SELECT cart_id FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
-        result = self.execute_query(query, (user_id, product_id))
-        return bool(result)
-
-    # === МАГАЗИНЫ И СКЛАД ===
     def get_shops_with_stock(self, product_id=None):
         """Получает информацию о магазинах и наличии товаров"""
         query = '''
@@ -254,16 +255,6 @@ class Database:
             return self.execute_query(query, (product_id,))
         else:
             return self.execute_query(query)
-
-    def get_product_availability(self, product_id):
-        """Получает наличие товара по магазинам"""
-        query = '''
-            SELECT s.shop_id, s.address, s.quantity
-            FROM shops s
-            WHERE s.product_id = ?
-            ORDER BY s.quantity DESC
-        '''
-        return self.execute_query(query, (product_id,))
 
     # === ПОСТАВЩИКИ ===
     def get_suppliers(self):
@@ -304,6 +295,4 @@ class Database:
             LEFT JOIN picture pic ON p.product_id = pic.product_id
             WHERE p.supplier_id = ?
         '''
-
-
         return self.execute_query(query, (supplier_id,))

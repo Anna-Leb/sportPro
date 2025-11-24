@@ -398,7 +398,8 @@ class SportsShopApp:
             font=ctk.CTkFont("Arial", 28, weight="bold")
         ).pack(pady=20)
 
-        cart_items = self.db.get_user_cart(self.current_user_id)
+        # Получаем только товары с quantity > 0 (не избранные)
+        cart_items = self.db.get_user_cart_active(self.current_user_id)
 
         if not cart_items:
             ctk.CTkLabel(
@@ -407,48 +408,174 @@ class SportsShopApp:
             ).pack(pady=50)
             return
 
+        # Основной контейнер корзины
+        cart_container = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        cart_container.pack(fill="both", expand=True, padx=40, pady=20)
+
+        # Левая часть - товары
+        items_frame = ctk.CTkFrame(cart_container, width=800)
+        items_frame.pack(side="left", fill="both", expand=True, padx=(0, 20))
+
+        # Правая часть - итоги и оформление
+        summary_frame = ctk.CTkFrame(cart_container, width=300)
+        summary_frame.pack(side="right", fill="y", padx=(20, 0))
+        summary_frame.pack_propagate(False)
+
         # Отображение товаров в корзине
         total_amount = 0
         for item in cart_items:
             cart_id, product_id, name, price, quantity, total, image_path = item
             total_amount += total
 
-            item_frame = ctk.CTkFrame(self.main_frame, height=120)
-            item_frame.pack(fill="x", padx=40, pady=5)
+            item_frame = ctk.CTkFrame(items_frame, height=120)
+            item_frame.pack(fill="x", pady=5)
             item_frame.pack_propagate(False)
 
-            # Информация о товаре
-            info_text = f"{name}\nЦена: {price} ₽ × {quantity} = {total} ₽"
+            # Левая часть - изображение и информация
+            left_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
+            left_frame.pack(side="left", fill="both", expand=True, padx=15, pady=15)
+
+            # Изображение товара
+            img_frame = ctk.CTkFrame(left_frame, width=80, height=80, fg_color="#F8F9FA", corner_radius=8)
+            img_frame.pack(side="left", padx=(0, 15))
+            img_frame.pack_propagate(False)
+
             ctk.CTkLabel(
-                item_frame, text=info_text,
-                font=ctk.CTkFont("Arial", 14),
+                img_frame, text="🛍️", font=ctk.CTkFont("Arial", 24),
+                text_color="#6C757D"
+            ).place(relx=0.5, rely=0.5, anchor="center")
+
+            # Информация о товаре
+            info_frame = ctk.CTkFrame(left_frame, fg_color="transparent")
+            info_frame.pack(side="left", fill="both", expand=True)
+
+            ctk.CTkLabel(
+                info_frame, text=name,
+                font=ctk.CTkFont("Arial", 16, weight="bold"),
                 justify="left"
-            ).pack(side="left", padx=20, pady=20)
+            ).pack(anchor="w")
 
-            # Кнопка удаления
+            ctk.CTkLabel(
+                info_frame, text=f"{price} ₽",
+                font=ctk.CTkFont("Arial", 14),
+                text_color="#2E86AB",
+                justify="left"
+            ).pack(anchor="w", pady=(5, 0))
+
+            # Правая часть - управление количеством
+            right_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
+            right_frame.pack(side="right", padx=15, pady=15)
+
+            # Управление количеством
+            quantity_frame = ctk.CTkFrame(right_frame, fg_color="transparent")
+            quantity_frame.pack(side="top", pady=(0, 10))
+
+            ctk.CTkLabel(
+                quantity_frame, text="Количество:",
+                font=ctk.CTkFont("Arial", 12)
+            ).pack(side="left", padx=(0, 10))
+
+            # Кнопка уменьшения количества
             ctk.CTkButton(
-                item_frame, text="❌ Удалить",
-                command=lambda cid=cart_id: self.remove_from_cart(cid),
-                fg_color="#E63946", hover_color="#C1121F",
-                width=100
-            ).pack(side="right", padx=20, pady=20)
+                quantity_frame, text="-",
+                width=30, height=30,
+                command=lambda cid=cart_id, q=quantity: self.decrease_quantity(cid, q),
+                fg_color="#6C757D", hover_color="#5A6268"
+            ).pack(side="left", padx=(0, 5))
 
-        # Общая сумма и кнопка оформления заказа
-        total_frame = ctk.CTkFrame(self.main_frame)
-        total_frame.pack(fill="x", padx=40, pady=20)
+            # Отображение количества
+            quantity_label = ctk.CTkLabel(
+                quantity_frame, text=str(quantity),
+                font=ctk.CTkFont("Arial", 14, weight="bold"),
+                width=30
+            )
+            quantity_label.pack(side="left", padx=5)
+
+            # Кнопка увеличения количества
+            ctk.CTkButton(
+                quantity_frame, text="+",
+                width=30, height=30,
+                command=lambda cid=cart_id: self.increase_quantity(cid),
+                fg_color="#6C757D", hover_color="#5A6268"
+            ).pack(side="left", padx=(5, 10))
+
+            # Общая стоимость товара
+            ctk.CTkLabel(
+                right_frame, text=f"Итого: {total} ₽",
+                font=ctk.CTkFont("Arial", 14, weight="bold"),
+                text_color="#2E86AB"
+            ).pack(side="top")
+
+        # Правая панель - итоги
+        ctk.CTkLabel(
+            summary_frame, text="Ваш заказ",
+            font=ctk.CTkFont("Arial", 20, weight="bold")
+        ).pack(pady=20)
+
+        # Пункт выдачи
+        ctk.CTkLabel(
+            summary_frame, text="Пункт выдачи:",
+            font=ctk.CTkFont("Arial", 14, weight="bold")
+        ).pack(anchor="w", padx=20, pady=(10, 5))
+
+        # Получаем уникальные адреса магазинов из БД
+        shops = self.db.get_unique_shop_addresses()
+        shop_addresses = [shop[0] for shop in shops] if shops else ["ул. Примерная, д. 1", "ул. Тестовая, д. 15"]
+
+        shop_var = ctk.StringVar(value=shop_addresses[0] if shop_addresses else "")
+        shop_combo = ctk.CTkComboBox(
+            summary_frame,
+            values=shop_addresses,
+            variable=shop_var,
+            width=260,
+            height=35
+        )
+        shop_combo.pack(padx=20, pady=(0, 15))
+
+        # Итоговая стоимость
+        ctk.CTkLabel(
+            summary_frame, text="Товары: {:.2f} ₽".format(total_amount),
+            font=ctk.CTkFont("Arial", 14)
+        ).pack(anchor="w", padx=20, pady=5)
 
         ctk.CTkLabel(
-            total_frame, text=f"Общая сумма: {total_amount} ₽",
-            font=ctk.CTkFont("Arial", 20, weight="bold")
-        ).pack(side="left", padx=20, pady=10)
+            summary_frame, text="Доставка: 0 ₽",
+            font=ctk.CTkFont("Arial", 14)
+        ).pack(anchor="w", padx=20, pady=5)
 
+        ctk.CTkLabel(
+            summary_frame, text="Итого: {:.2f} ₽".format(total_amount),
+            font=ctk.CTkFont("Arial", 18, weight="bold"),
+            text_color="#2E86AB"
+        ).pack(anchor="w", padx=20, pady=15)
+
+        # Кнопка оформления заказа
         ctk.CTkButton(
-            total_frame, text="Оформить заказ",
-            command=lambda: self.create_order(cart_items),
+            summary_frame, text="Оформить заказ",
+            command=lambda: self.create_order(cart_items, shop_var.get()),
             fg_color="#2E86AB", hover_color="#1B5E7D",
             font=ctk.CTkFont("Arial", 16, weight="bold"),
-            height=40
-        ).pack(side="right", padx=20, pady=10)
+            height=45
+        ).pack(fill="x", padx=20, pady=20)
+
+    def decrease_quantity(self, cart_id, current_quantity):
+        """Уменьшение количества товара в корзине"""
+        if current_quantity > 1:
+            # Обновляем количество в БД
+            query = 'UPDATE cart SET quantity = quantity - 1 WHERE cart_id = ?'
+            if self.db.execute_query(query, (cart_id,)):
+                self.show_notification("Количество уменьшено")
+                self.show_cart()  # Обновляем отображение
+        else:
+            # Если количество 1, удаляем товар
+            self.remove_from_cart(cart_id)
+
+    def increase_quantity(self, cart_id):
+        """Увеличение количества товара в корзине"""
+        query = 'UPDATE cart SET quantity = quantity + 1 WHERE cart_id = ?'
+        if self.db.execute_query(query, (cart_id,)):
+            self.show_notification("Количество увеличено")
+            self.show_cart()  # Обновляем отображение
 
     def remove_from_cart(self, cart_id):
         """Удаление из корзины"""
@@ -456,11 +583,11 @@ class SportsShopApp:
             self.show_notification("Товар удален из корзины")
             self.show_cart()  # Обновляем отображение
 
-    def create_order(self, cart_items):
+    def create_order(self, cart_items, shop_address):
         """Создание заказа"""
         order_id = self.db.create_order(self.current_user_id, cart_items)
         if order_id:
-            self.show_notification(f"Заказ #{order_id} успешно оформлен!")
+            self.show_notification(f"Заказ #{order_id} успешно оформлен! Пункт выдачи: {shop_address}")
             self.show_cart()  # Обновляем корзину
 
     def show_auth(self):
@@ -549,8 +676,7 @@ class SportsShopApp:
             order_frame.pack_propagate(False)
 
             # Информация о заказе
-            order_info = f"Заказ #{order_id} от {order_date}\nТовары: {items}\nСумма: {total_amount} ₽"
-
+            order_info = "Заказ #{} от {}\nТовары: {}\nСумма: {:.2f} ₽".format(order_id, order_date, items, total_amount)
             ctk.CTkLabel(
                 order_frame, text=order_info,
                 font=ctk.CTkFont("Arial", 14),
@@ -601,7 +727,7 @@ class SportsShopApp:
 
             # Общая сумма
             ctk.CTkLabel(
-                details_window, text=f"Общая сумма: {total} ₽",
+                details_window, text="Общая сумма: {:.2f} ₽".format(total),
                 font=ctk.CTkFont("Arial", 16, weight="bold"),
                 text_color="#2E86AB"
             ).pack(pady=20)
