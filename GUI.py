@@ -1,5 +1,6 @@
 import customtkinter as ctk
 from database import Database
+from catalog import CatalogWindow
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -15,12 +16,30 @@ class SportsShopApp:
         self.current_user_id = None
         self.current_user_login = None
         self.products = []
+        self.content_frame = None  # Добавляем инициализацию
 
         self.load_products_data()
         self.create_navbar()
-        self.create_main_content()
+        self.create_main_content()  # Этот метод создаст content_frame
 
         self.show_home()
+
+    def show_catalog(self):
+        """Показ каталога товаров"""
+        self.clear_main_frame()
+
+        # Создаем окно каталога
+        try:
+            self.catalog_window = CatalogWindow(self.content_frame, self.current_user_id)
+            print("Каталог успешно загружен")
+        except Exception as e:
+            print(f"Ошибка загрузки каталога: {e}")
+            ctk.CTkLabel(
+                self.content_frame,
+                text="Ошибка загрузки каталога",
+                font=ctk.CTkFont("Arial", 16),
+                text_color="red"
+            ).pack(pady=50)
 
     def load_products_data(self):
         """Загрузка товаров из базы"""
@@ -94,16 +113,13 @@ class SportsShopApp:
 
     def create_main_content(self):
         """Создание основной области"""
-        self.main_frame = ctk.CTkScrollableFrame(
-            self.window,
-            fg_color="transparent",
-            scrollbar_button_color="#2E86AB"
-        )
-        self.main_frame.pack(fill="both", expand=True, padx=0, pady=0)
+        # Создаем основной контейнер для контента
+        self.content_frame = ctk.CTkFrame(self.window)
+        self.content_frame.pack(fill="both", expand=True, padx=0, pady=0)
 
     def clear_main_frame(self):
         """Очистка основной области"""
-        for widget in self.main_frame.winfo_children():
+        for widget in self.content_frame.winfo_children():
             widget.destroy()
 
     def show_home(self):
@@ -112,7 +128,7 @@ class SportsShopApp:
 
         # Баннер
         banner = ctk.CTkFrame(
-            self.main_frame, height=300,
+            self.content_frame, height=300,  # Изменено с main_frame на content_frame
             fg_color="#E63946", corner_radius=0
         )
         banner.pack(fill="x", pady=(0, 30))
@@ -140,19 +156,19 @@ class SportsShopApp:
         """Показ товаров"""
         if not self.products:
             ctk.CTkLabel(
-                self.main_frame, text="Товары не найдены",
+                self.content_frame, text="Товары не найдены",  # Изменено с main_frame на content_frame
                 font=ctk.CTkFont("Arial", 16), text_color="red"
             ).pack(pady=50)
             return
 
         # Заголовок
         ctk.CTkLabel(
-            self.main_frame, text="Популярные товары",
+            self.content_frame, text="Популярные товары",  # Изменено с main_frame на content_frame
             font=ctk.CTkFont("Arial", 28, weight="bold")
         ).pack(pady=20)
 
         # Сетка товаров
-        products_grid = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        products_grid = ctk.CTkFrame(self.content_frame, fg_color="transparent")  # Изменено
         products_grid.pack(fill="both", expand=True, padx=40, pady=20)
 
         # Создаем 4 колонки
@@ -888,11 +904,6 @@ class SportsShopApp:
         )
         notification.place(relx=0.5, rely=0.1, anchor="center")
         self.window.after(2000, notification.destroy)
-
-    def show_catalog(self):
-        """Показ каталога"""
-        self.clear_main_frame()
-        ctk.CTkLabel(self.main_frame, text="Каталог", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(pady=50)
 
     def show_addresses(self):
         """Показ адресов магазинов"""
