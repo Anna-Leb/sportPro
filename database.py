@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from datetime import datetime
 
 
 class Database:
@@ -39,77 +40,225 @@ class Database:
         finally:
             conn.close()
 
+    # === ПОЛЬЗОВАТЕЛИ ===
+    def get_user_by_credentials(self, login, password):
+        """Проверяет логин и пароль пользователя"""
+        query = 'SELECT user_id, login FROM users WHERE login = ? AND password = ?'
+        result = self.execute_query(query, (login, password))
+        return result[0] if result else None
+
+    def create_user(self, login, password):
+        """Создает нового пользователя"""
+        query = 'INSERT INTO users (login, password) VALUES (?, ?)'
+        return self.execute_query(query, (login, password))
+
+    def check_user_exists(self, login):
+        """Проверяет, существует ли пользователь с таким логином"""
+        query = 'SELECT user_id FROM users WHERE login = ?'
+        result = self.execute_query(query, (login,))
+        return bool(result)
+
+    # === ТОВАРЫ ===
     def get_products(self, category_id=None):
         """Получает список товаров"""
         query = '''
-            SELECT p.id_товара, p.название, p.описание, p.цена, p.размер, p.модель,
-                   c.название as категория, s.имя as поставщик, pic.pic_id as изображение
-            FROM товар p
-            LEFT JOIN категории_товаров c ON p.id_категории = c.id_категории
-            LEFT JOIN поставщик s ON p.id_поставщика = s.id_поставщика
-            LEFT JOIN картинки pic ON p.id_товара = pic.product_id
+            SELECT p.product_id, p.name, p.description, p.price, p.size, p.model,
+                   c.name as category_name, s.name as supplier_name, pic.pic_id as image_path
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.category_id
+            LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
+            LEFT JOIN picture pic ON p.product_id = pic.product_id
         '''
 
         if category_id:
-            query += ' WHERE p.id_категории = ?'
+            query += ' WHERE p.category_id = ?'
             return self.execute_query(query, (category_id,))
         else:
             return self.execute_query(query)
 
+    def get_product_by_id(self, product_id):
+        """Получает товар по ID"""
+        query = '''
+            SELECT p.product_id, p.name, p.description, p.price, p.size, p.model,
+                   c.name as category_name, s.name as supplier_name, pic.pic_id as image_path
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.category_id
+            LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
+            LEFT JOIN picture pic ON p.product_id = pic.product_id
+            WHERE p.product_id = ?
+        '''
+        result = self.execute_query(query, (product_id,))
+        return result[0] if result else None
+
+    # === КАТЕГОРИИ ===
     def get_categories(self):
         """Получает список категорий"""
-        query = 'SELECT id_категории, название, описание FROM категории_товаров'
+        query = 'SELECT category_id, name, description FROM categories'
         return self.execute_query(query)
 
+    # === КОРЗИНА ===
     def get_user_cart(self, user_id):
         """Получает корзину пользователя"""
         query = '''
-            SELECT c.id_связи, p.id_товара, p.название, p.цена, c.количество, 
-                   (p.цена * c.количество) as total, pic.pic_id
-            FROM корзина c
-            JOIN товар p ON c.id_товара = p.id_товара
-            LEFT JOIN картинки pic ON p.id_товара = pic.product_id
-            WHERE c.id_user = ?
+            SELECT c.cart_id, p.product_id, p.name, p.price, c.quantity, 
+                   (p.price * c.quantity) as total, pic.pic_id as image_path
+            FROM cart c
+            JOIN products p ON c.product_id = p.product_id
+            LEFT JOIN picture pic ON p.product_id = pic.product_id
+            WHERE c.user_id = ?
         '''
         return self.execute_query(query, (user_id,))
 
     def add_to_cart(self, user_id, product_id, quantity=1):
         """Добавляет товар в корзину"""
         # Проверяем, есть ли уже товар в корзине
-        check_query = 'SELECT id_связи, количество FROM корзина WHERE id_user = ? AND id_товара = ?'
+        check_query = 'SELECT cart_id, quantity FROM cart WHERE user_id = ? AND product_id = ?'
         existing = self.execute_query(check_query, (user_id, product_id))
 
         if existing:
             # Обновляем количество
             new_quantity = existing[0][1] + quantity
-            update_query = 'UPDATE корзина SET количество = ? WHERE id_связи = ?'
+            update_query = 'UPDATE cart SET quantity = ? WHERE cart_id = ?'
             return self.execute_query(update_query, (new_quantity, existing[0][0]))
         else:
             # Добавляем новый товар
-            insert_query = 'INSERT INTO корзина (id_user, id_товара, количество) VALUES (?, ?, ?)'
+            insert_query = 'INSERT INTO cart (user_id, product_id, quantity) VALUES (?, ?, ?)'
             return self.execute_query(insert_query, (user_id, product_id, quantity))
 
-    def remove_from_cart(self, cart_item_id):
+    def remove_from_cart(self, cart_id):
         """Удаляет товар из корзины"""
-        query = 'DELETE FROM корзина WHERE id_связи = ?'
-        return self.execute_query(query, (cart_item_id,))
+        query = 'DELETE FROM cart WHERE cart_id = ?'
+        return self.execute_query(query, (cart_id,))
 
-    def create_order(self, user_id, total_amount):
-        """Создает новый заказ"""
-        from datetime import date
-        query = 'INSERT INTO заказы (дата_заказа, сумма, id_user) VALUES (?, ?, ?)'
-        return self.execute_query(query, (date.today(), total_amount, user_id))
+    def clear_user_cart(self, user_id):
+        """Очищает корзину пользователя"""
+        query = 'DELETE FROM cart WHERE user_id = ?'
+        return self.execute_query(query, (user_id,))
+
+    # === ЗАКАЗЫ ===
+    def create_order(self, user_id, cart_items):
+        """Создает новый заказ из корзины"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Рассчитываем общую сумму
+            total_amount = sum(item[5] for item in cart_items)  # item[5] - это total
+
+            # Создаем заказ
+            cursor.execute(
+                'INSERT INTO orders (order_date, total_amount, user_id) VALUES (?, ?, ?)',
+                (datetime.now().date(), total_amount, user_id)
+            )
+            order_id = cursor.lastrowid
+
+            # Добавляем товары в order_items
+            for item in cart_items:
+                cart_id, product_id, name, price, quantity, total, image_path = item
+                cursor.execute(
+                    'INSERT INTO order_items (order_id, product_id, quantity) VALUES (?, ?, ?)',
+                    (order_id, product_id, quantity)
+                )
+
+            # Очищаем корзину
+            cursor.execute('DELETE FROM cart WHERE user_id = ?', (user_id,))
+
+            conn.commit()
+            return order_id
+
+        except sqlite3.Error as e:
+            conn.rollback()
+            print(f"Ошибка при создании заказа: {e}")
+            return None
+        finally:
+            conn.close()
 
     def get_user_orders(self, user_id):
         """Получает заказы пользователя"""
         query = '''
-            SELECT o.id_заказа, o.дата_заказа, o.сумма, 
-                   GROUP_CONCAT(p.название || ' (x' || oi.количество_в_заказе || ')') as товары
-            FROM заказы o
-            JOIN элементы_заказа oi ON o.id_заказа = oi.id_заказа
-            JOIN товар p ON oi.id_товара = p.id_товара
-            WHERE o.id_user = ?
-            GROUP BY o.id_заказа
-            ORDER BY o.дата_заказа DESC
+            SELECT o.order_id, o.order_date, o.total_amount, 
+                   GROUP_CONCAT(p.name || " (x" || oi.quantity || ")") as items
+            FROM orders o
+            JOIN order_items oi ON o.order_id = oi.order_id
+            JOIN products p ON oi.product_id = p.product_id
+            WHERE o.user_id = ?
+            GROUP BY o.order_id
+            ORDER BY o.order_date DESC
         '''
         return self.execute_query(query, (user_id,))
+
+    def get_order_details(self, order_id):
+        """Получает детали заказа"""
+        query = '''
+            SELECT p.name, p.price, oi.quantity, (p.price * oi.quantity) as total
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.product_id
+            WHERE oi.order_id = ?
+        '''
+        return self.execute_query(query, (order_id,))
+
+    # === МАГАЗИНЫ И СКЛАД ===
+    def get_shops_with_stock(self, product_id=None):
+        """Получает информацию о магазинах и наличии товаров"""
+        query = '''
+            SELECT s.shop_id, s.address, s.product_id, s.quantity, p.name as product_name
+            FROM shops s
+            JOIN products p ON s.product_id = p.product_id
+        '''
+
+        if product_id:
+            query += ' WHERE s.product_id = ?'
+            return self.execute_query(query, (product_id,))
+        else:
+            return self.execute_query(query)
+
+    def get_product_availability(self, product_id):
+        """Получает наличие товара по магазинам"""
+        query = '''
+            SELECT s.shop_id, s.address, s.quantity
+            FROM shops s
+            WHERE s.product_id = ?
+            ORDER BY s.quantity DESC
+        '''
+        return self.execute_query(query, (product_id,))
+
+    # === ПОСТАВЩИКИ ===
+    def get_suppliers(self):
+        """Получает список поставщиков"""
+        query = 'SELECT supplier_id, name FROM suppliers'
+        return self.execute_query(query)
+
+    # === ИЗОБРАЖЕНИЯ ===
+    def get_product_image(self, product_id):
+        """Получает путь к изображению товара"""
+        query = 'SELECT pic_id FROM picture WHERE product_id = ?'
+        result = self.execute_query(query, (product_id,))
+        return result[0][0] if result else None
+
+    # === ПОИСК И ФИЛЬТРАЦИЯ ===
+    def search_products(self, search_term):
+        """Поиск товаров по названию и описанию"""
+        query = '''
+            SELECT p.product_id, p.name, p.description, p.price, p.size, p.model,
+                   c.name as category_name, s.name as supplier_name, pic.pic_id as image_path
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.category_id
+            LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
+            LEFT JOIN picture pic ON p.product_id = pic.product_id
+            WHERE p.name LIKE ? OR p.description LIKE ? OR p.model LIKE ?
+        '''
+        search_pattern = f'%{search_term}%'
+        return self.execute_query(query, (search_pattern, search_pattern, search_pattern))
+
+    def get_products_by_supplier(self, supplier_id):
+        """Получает товары по поставщику"""
+        query = '''
+            SELECT p.product_id, p.name, p.description, p.price, p.size, p.model,
+                   c.name as category_name, s.name as supplier_name, pic.pic_id as image_path
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.category_id
+            LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
+            LEFT JOIN picture pic ON p.product_id = pic.product_id
+            WHERE p.supplier_id = ?
+        '''
+        return self.execute_query(query, (supplier_id,))
