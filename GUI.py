@@ -1,5 +1,5 @@
 import customtkinter as ctk
-import sqlite3
+from database import Database
 from PIL import Image, ImageTk
 import os
 
@@ -15,7 +15,8 @@ class SportsShopApp:
         self.window.geometry("1400x900")
 
         # Инициализация базы данных
-        self.init_database()
+        self.db = Database('sports_shop.db')
+        self.current_user_id = 1  # Для демонстрации, в реальном приложении - из системы авторизации
 
         # Загрузка данных
         self.load_products_data()
@@ -26,159 +27,18 @@ class SportsShopApp:
         # Основная область контента
         self.create_main_content()
 
-    def init_database(self):
-        """Инициализация базы данных и создание таблиц если их нет"""
-        try:
-            self.conn = sqlite3.connect('sports_shop.db')
-            self.cursor = self.conn.cursor()
-
-            # Проверяем существование таблиц и создаем их если нужно
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='products'")
-            if not self.cursor.fetchone():
-                self.create_tables()
-
-        except sqlite3.Error as e:
-            print(f"Ошибка базы данных: {e}")
-
-    def create_tables(self):
-        """Создание таблиц если они не существуют"""
-        # Таблица категорий
-        self.cursor.execute('''
-            CREATE TABLE categories (
-                category_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT
-            )
-        ''')
-
-        # Таблица поставщиков
-        self.cursor.execute('''
-            CREATE TABLE suppliers (
-                supplier_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL
-            )
-        ''')
-
-        # Таблица товаров
-        self.cursor.execute('''
-            CREATE TABLE products (
-                product_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT,
-                price DECIMAL(10, 2) NOT NULL,
-                category_id INTEGER,
-                size TEXT,
-                model TEXT,
-                supplier_id INTEGER,
-                image_url TEXT,
-                FOREIGN KEY (category_id) REFERENCES categories (category_id),
-                FOREIGN KEY (supplier_id) REFERENCES suppliers (supplier_id)
-            )
-        ''')
-
-        # Таблица пользователей
-        self.cursor.execute('''
-            CREATE TABLE users (
-                user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                login TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
-            )
-        ''')
-
-        # Таблица корзины
-        self.cursor.execute('''
-            CREATE TABLE cart (
-                cart_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                product_id INTEGER NOT NULL,
-                quantity INTEGER NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users (user_id),
-                FOREIGN KEY (product_id) REFERENCES products (product_id)
-            )
-        ''')
-
-        # Добавляем тестовые данные
-        self.insert_sample_data()
-
-        self.conn.commit()
-
-    def insert_sample_data(self):
-        """Вставка тестовых данных"""
-        # Добавляем категории
-        categories = [
-            ('Кроссовки', 'Спортивная обувь для бега и тренировок'),
-            ('Футболки', 'Спортивные футболки и майки'),
-            ('Шорты', 'Спортивные шорты для тренировок'),
-            ('Аксессуары', 'Спортивные аксессуары и инвентарь'),
-            ('Мячи', 'Спортивные мячи для различных видов спорта')
-        ]
-        self.cursor.executemany(
-            'INSERT INTO categories (name, description) VALUES (?, ?)',
-            categories
-        )
-
-        # Добавляем поставщиков
-        suppliers = [
-            ('Nike',),
-            ('Adidas',),
-            ('Puma',),
-            ('Reebok',)
-        ]
-        self.cursor.executemany(
-            'INSERT INTO suppliers (name) VALUES (?)',
-            suppliers
-        )
-
-        # Добавляем товары
-        products = [
-            ('Nike Air Max', 'Беговые кроссовки с технологией Air', 129.99, 1, '42', 'Air Max 270', 1,
-             'nike_air_max.jpg'),
-            ('Adidas Ultraboost', 'Кроссовки для бега с технологией Boost', 149.99, 1, '41', 'Ultraboost 22', 2,
-             'adidas_ultraboost.jpg'),
-            ('Puma DryCell T-shirt', 'Влагоотводящая футболка для тренировок', 34.99, 2, 'M', 'DryCell', 3,
-             'puma_tshirt.jpg'),
-            ('Nike Dri-FIT Shorts', 'Спортивные шорты с технологией Dri-FIT', 45.99, 3, 'L', 'Dri-FIT', 1,
-             'nike_shorts.jpg'),
-            ('Reebok Fitness Gloves', 'Тренировочные перчатки для фитнеса', 24.99, 4, 'Universal', 'Fitness', 4,
-             'reebok_gloves.jpg'),
-            ('Adidas Basketball', 'Профессиональный баскетбольный мяч', 89.99, 5, '7', 'Pro', 2,
-             'adidas_basketball.jpg'),
-            ('Nike Running Jacket', 'Ветровка для бега с светоотражающими элементами', 79.99, 2, 'L', 'Running', 1,
-             'nike_jacket.jpg'),
-            ('Puma Training Shoes', 'Кроссовки для кроссфита и тренировок', 119.99, 1, '43', 'Training Pro', 3,
-             'puma_training.jpg')
-        ]
-        self.cursor.executemany(
-            'INSERT INTO products (name, description, price, category_id, size, model, supplier_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            products
-        )
-
-        # Добавляем тестового пользователя
-        self.cursor.execute(
-            'INSERT INTO users (login, password) VALUES (?, ?)',
-            ('test_user', 'password123')
-        )
-
     def load_products_data(self):
         """Загрузка данных о товарах из базы"""
         try:
-            self.cursor.execute('''
-                SELECT p.product_id, p.name, p.price, p.description, 
-                       c.name as category, p.size, p.model, s.name as supplier,
-                       p.image_url
-                FROM products p
-                LEFT JOIN categories c ON p.category_id = c.category_id
-                LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
-                ORDER BY p.product_id
-            ''')
+            self.products = self.db.get_products()
+            self.categories = self.db.get_categories()
 
-            self.products = self.cursor.fetchall()
-
-        except sqlite3.Error as e:
-            print(f"Ошибка загрузки товаров: {e}")
+        except Exception as e:
+            print(f"Ошибка загрузки данных: {e}")
             self.products = []
+            self.categories = []
 
-        # Избранные товары (в реальном приложении - из базы данных)
+        # Избранные товары
         self.favorites = set()
 
     def create_top_navbar(self):
@@ -346,8 +206,9 @@ class SportsShopApp:
             product_frame.pack(side="left", padx=15, fill="y")
 
     def create_product_card(self, parent, product):
-        """Создание карточки товара в стиле Golden Apple"""
-        product_id, name, price, description, category, size, model, supplier, image_url = product
+        """Создание карточки товара"""
+        (product_id, name, price, description, size, model,
+         category, supplier, image_path) = product
 
         # Основной фрейм карточки
         card_frame = ctk.CTkFrame(
@@ -360,7 +221,7 @@ class SportsShopApp:
         )
         card_frame.pack_propagate(False)
 
-        # Верхняя часть с изображением (заглушка)
+        # Верхняя часть с изображением
         image_frame = ctk.CTkFrame(
             card_frame,
             height=200,
@@ -370,85 +231,40 @@ class SportsShopApp:
         image_frame.pack(fill="x", padx=10, pady=10)
         image_frame.pack_propagate(False)
 
-        # Заглушка изображения
-        image_label = ctk.CTkLabel(
-            image_frame,
+        # Загрузка изображения (если есть)
+        if image_path and os.path.exists(image_path):
+            try:
+                image = Image.open(image_path)
+                image = image.resize((150, 150), Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(image)
+
+                image_label = ctk.CTkLabel(
+                    image_frame,
+                    image=photo,
+                    text=""
+                )
+                image_label.image = photo  # Сохраняем ссылку
+                image_label.place(relx=0.5, rely=0.5, anchor="center")
+
+            except Exception as e:
+                # Если не удалось загрузить изображение, показываем заглушку
+                self._create_image_placeholder(image_frame)
+        else:
+            self._create_image_placeholder(image_frame)
+
+        # ... остальной код метода без изменений ...
+
+        return card_frame
+
+    def _create_image_placeholder(self, parent):
+        """Создает заглушку для изображения"""
+        placeholder = ctk.CTkLabel(
+            parent,
             text="🛍️",
             font=ctk.CTkFont("Arial", 48),
             text_color="#6C757D"
         )
-        image_label.place(relx=0.5, rely=0.5, anchor="center")
-
-        # Кнопка "Добавить в избранное" в правом верхнем углу
-        is_favorite = product_id in self.favorites
-        heart_icon = "❤️" if is_favorite else "🤍"
-
-        favorite_btn = ctk.CTkButton(
-            image_frame,
-            text=heart_icon,
-            font=ctk.CTkFont("Arial", 16),
-            width=35,
-            height=35,
-            fg_color="transparent" if not is_favorite else "#FF6B6B",
-            hover_color="#FF6B6B" if not is_favorite else "#FF5252",
-            text_color="white" if is_favorite else "#6C757D",
-            command=lambda pid=product_id: self.toggle_favorite(pid, favorite_btn)
-        )
-        favorite_btn.place(relx=0.9, rely=0.2, anchor="center")
-
-        # Информация о товаре
-        info_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
-        info_frame.pack(fill="both", expand=True, padx=15, pady=10)
-
-        # Название товара (кликабельное)
-        name_button = ctk.CTkButton(
-            info_frame,
-            text=name,
-            font=ctk.CTkFont("Arial", 16, weight="bold"),
-            fg_color="transparent",
-            hover_color="#F8F9FA",
-            text_color="#2E86AB",
-            command=lambda pid=product_id: self.show_product_detail(pid),
-            anchor="w",
-            height=30
-        )
-        name_button.pack(fill="x", pady=(0, 5))
-
-        # Описание
-        desc_label = ctk.CTkLabel(
-            info_frame,
-            text=description,
-            font=ctk.CTkFont("Arial", 12),
-            wraplength=240,
-            text_color="#666666",
-            justify="left"
-        )
-        desc_label.pack(fill="x", pady=(0, 10))
-
-        # Цена
-        price_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-        price_frame.pack(fill="x", pady=5)
-
-        price_label = ctk.CTkLabel(
-            price_frame,
-            text=f"${price}",
-            font=ctk.CTkFont("Arial", 20, weight="bold"),
-            text_color="#2E86AB"
-        )
-        price_label.pack(side="left")
-
-        # Кнопка добавления в корзину
-        add_btn = ctk.CTkButton(
-            info_frame,
-            text="В корзину",
-            command=lambda pid=product_id: self.add_to_cart(pid),
-            fg_color="#2E86AB",
-            hover_color="#1B5E7D",
-            height=35
-        )
-        add_btn.pack(fill="x", pady=(10, 0))
-
-        return card_frame
+        placeholder.place(relx=0.5, rely=0.5, anchor="center")
 
     def toggle_favorite(self, product_id, button):
         """Добавить/удалить из избранного"""
@@ -668,13 +484,99 @@ class SportsShopApp:
         )
         title.pack(pady=20)
 
-        # Здесь будет содержимое корзины из базы данных
-        cart_label = ctk.CTkLabel(
-            self.main_frame,
-            text="Содержимое вашей корзины...",
-            font=ctk.CTkFont("Arial", 16)
+        # Загружаем данные корзины из БД
+        cart_items = self.db.get_user_cart(self.current_user_id)
+
+        if not cart_items:
+            empty_label = ctk.CTkLabel(
+                self.main_frame,
+                text="Корзина пуста",
+                font=ctk.CTkFont("Arial", 16),
+                text_color="#666666"
+            )
+            empty_label.pack(pady=50)
+            return
+
+        # Контейнер для товаров в корзине
+        cart_container = ctk.CTkScrollableFrame(self.main_frame)
+        cart_container.pack(fill="both", expand=True, padx=40, pady=20)
+
+        total_amount = 0
+
+        for item in cart_items:
+            (cart_id, product_id, name, price, quantity, total, image_path) = item
+            total_amount += total
+
+            item_frame = ctk.CTkFrame(cart_container)
+            item_frame.pack(fill="x", padx=10, pady=5)
+
+            # Информация о товаре
+            info_text = f"{name}\nЦена: ${price} × {quantity} = ${total}"
+            info_label = ctk.CTkLabel(item_frame, text=info_text, justify="left")
+            info_label.pack(side="left", padx=10, pady=10)
+
+            # Кнопка удаления
+            remove_btn = ctk.CTkButton(
+                item_frame,
+                text="❌",
+                width=30,
+                height=30,
+                command=lambda cid=cart_id: self.remove_from_cart(cid)
+            )
+            remove_btn.pack(side="right", padx=10, pady=10)
+
+        # Общая сумма
+        total_frame = ctk.CTkFrame(self.main_frame)
+        total_frame.pack(fill="x", padx=40, pady=20)
+
+        total_label = ctk.CTkLabel(
+            total_frame,
+            text=f"Общая сумма: ${total_amount:.2f}",
+            font=ctk.CTkFont("Arial", 20, weight="bold")
         )
-        cart_label.pack(pady=50)
+        total_label.pack(side="left")
+
+        # Кнопка оформления заказа
+        order_btn = ctk.CTkButton(
+            total_frame,
+            text="Оформить заказ",
+            fg_color="#2E86AB",
+            hover_color="#1B5E7D",
+            command=self.create_order
+        )
+        order_btn.pack(side="right", padx=10)
+
+    def remove_from_cart(self, cart_item_id):
+        """Удаляет товар из корзины"""
+        try:
+            self.db.remove_from_cart(cart_item_id)
+            self.show_cart()  # Обновляем отображение
+            self.show_notification("Товар удален из корзины")
+        except Exception as e:
+            print(f"Ошибка при удалении из корзины: {e}")
+
+    def create_order(self):
+        """Создает заказ из корзины"""
+        try:
+            cart_items = self.db.get_user_cart(self.current_user_id)
+            if not cart_items:
+                self.show_notification("Корзина пуста!")
+                return
+
+            total_amount = sum(item[5] for item in cart_items)  # item[5] - это total
+
+            # Создаем заказ
+            order_id = self.db.create_order(self.current_user_id, total_amount)
+
+            if order_id:
+                self.show_notification(f"Заказ #{order_id} оформлен успешно!")
+                self.show_cart()  # Обновляем корзину (она должна стать пустой)
+            else:
+                self.show_notification("Ошибка при создании заказа")
+
+        except Exception as e:
+            print(f"Ошибка при создании заказа: {e}")
+            self.show_notification("Ошибка при создании заказа")
 
     def show_addresses(self):
         """Показать адреса магазинов"""
@@ -737,15 +639,30 @@ class SportsShopApp:
     def add_to_cart(self, product_id):
         """Добавить товар в корзину"""
         try:
-            # Добавляем товар в корзину для текущего пользователя (user_id = 1 для демо)
-            self.cursor.execute(
-                'INSERT INTO cart (user_id, product_id, quantity) VALUES (?, ?, 1)',
-                (1, product_id)
-            )
-            self.conn.commit()
-            print(f"Товар {product_id} добавлен в корзину")
-        except sqlite3.Error as e:
-            print(f"Ошибка добавления в корзину: {e}")
+            result = self.db.add_to_cart(self.current_user_id, product_id)
+            if result:
+                print(f"Товар {product_id} добавлен в корзину")
+                # Можно показать уведомление
+                self.show_notification("Товар добавлен в корзину!")
+            else:
+                print("Ошибка при добавлении в корзину")
+        except Exception as e:
+            print(f"Ошибка: {e}")
+
+    def show_notification(self, message):
+        """Показывает временное уведомление"""
+        notification = ctk.CTkLabel(
+            self.window,
+            text=message,
+            font=ctk.CTkFont("Arial", 14),
+            fg_color="#2E86AB",
+            text_color="white",
+            corner_radius=10
+        )
+        notification.place(relx=0.5, rely=0.1, anchor="center")
+
+        # Убираем уведомление через 2 секунды
+        self.window.after(2000, notification.destroy)
 
     def run(self):
         """Запуск приложения"""
