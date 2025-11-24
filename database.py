@@ -204,6 +204,42 @@ class Database:
         '''
         return self.execute_query(query, (order_id,))
 
+    # === ИЗБРАННОЕ ===
+    def add_to_favorites(self, user_id, product_id):
+        """Добавляет товар в избранное"""
+        # Проверяем, есть ли уже товар в избранном
+        check_query = 'SELECT cart_id FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
+        existing = self.execute_query(check_query, (user_id, product_id))
+
+        if not existing:
+            # Добавляем в корзину с флагом favorite=1
+            insert_query = 'INSERT INTO cart (user_id, product_id, quantity, favorite) VALUES (?, ?, 0, 1)'
+            return self.execute_query(insert_query, (user_id, product_id))
+        return True
+
+    def remove_from_favorites(self, user_id, product_id):
+        """Удаляет товар из избранного"""
+        query = 'DELETE FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
+        return self.execute_query(query, (user_id, product_id))
+
+    def get_user_favorites(self, user_id):
+        """Получает избранные товары пользователя"""
+        query = '''
+            SELECT c.cart_id, p.product_id, p.name, p.description, p.price, p.size, p.model,
+                   c.quantity, (p.price * c.quantity) as total, pic.pic_id as image_path
+            FROM cart c
+            JOIN products p ON c.product_id = p.product_id
+            LEFT JOIN picture pic ON p.product_id = pic.product_id
+            WHERE c.user_id = ? AND c.favorite = 1
+        '''
+        return self.execute_query(query, (user_id,))
+
+    def is_product_in_favorites(self, user_id, product_id):
+        """Проверяет, есть ли товар в избранном"""
+        query = 'SELECT cart_id FROM cart WHERE user_id = ? AND product_id = ? AND favorite = 1'
+        result = self.execute_query(query, (user_id, product_id))
+        return bool(result)
+
     # === МАГАЗИНЫ И СКЛАД ===
     def get_shops_with_stock(self, product_id=None):
         """Получает информацию о магазинах и наличии товаров"""
@@ -268,4 +304,6 @@ class Database:
             LEFT JOIN picture pic ON p.product_id = pic.product_id
             WHERE p.supplier_id = ?
         '''
+
+
         return self.execute_query(query, (supplier_id,))

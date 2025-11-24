@@ -15,7 +15,8 @@ class SportsShopApp:
         self.current_user_id = None
         self.current_user_login = None
         self.products = []
-        self.favorites = set()
+        # Убираем локальное хранение избранного, будем работать с БД
+        # self.favorites = set()
 
         self.load_products_data()
         self.create_navbar()
@@ -53,6 +54,7 @@ class SportsShopApp:
             ("Главная", self.show_home),
             ("Каталог", self.show_catalog),
             ("Корзина", self.show_cart),
+            ("Избранное", self.show_favorites),
             ("Адреса", self.show_addresses)
         ]:
             btn = ctk.CTkButton(
@@ -70,24 +72,24 @@ class SportsShopApp:
 
         # Кнопка профиля
         self.profile_btn = ctk.CTkButton(
-            right_frame, text="👤",
-            font=ctk.CTkFont("Arial", 18),
+            right_frame, text="👤 Войти",
+            font=ctk.CTkFont("Arial", 14),
             fg_color="transparent", hover_color="#1B5E7D",
-            text_color="white", width=45, height=35,
+            text_color="white", width=100, height=35,
             command=self.show_auth
         )
         self.profile_btn.pack(side="left", padx=10)
 
         # Остальные иконки
         for icon, command in [
-            ("❤️", self.show_favorites),
-            ("🛒", self.show_cart)
+            ("❤️ Избранное", self.show_favorites),
+            ("🛒 Корзина", self.show_cart)
         ]:
             btn = ctk.CTkButton(
                 right_frame, text=icon,
-                font=ctk.CTkFont("Arial", 18),
+                font=ctk.CTkFont("Arial", 14),
                 fg_color="transparent", hover_color="#1B5E7D",
-                text_color="white", width=45, height=35,
+                text_color="white", width=120, height=35,
                 command=command
             )
             btn.pack(side="left", padx=10)
@@ -183,8 +185,12 @@ class SportsShopApp:
         img_frame.pack(fill="x", padx=10, pady=10)
         img_frame.pack_propagate(False)
 
+        # Проверяем, в избранном ли товар
+        is_fav = False
+        if self.current_user_id:
+            is_fav = self.db.is_product_in_favorites(self.current_user_id, product_id)
+
         # Кнопка избранного
-        is_fav = product_id in self.favorites
         fav_btn = ctk.CTkButton(
             img_frame, text="❤️" if is_fav else "🤍",
             font=ctk.CTkFont("Arial", 12), width=30, height=30,
@@ -242,14 +248,23 @@ class SportsShopApp:
         return card
 
     def toggle_favorite(self, product_id):
-        """Избранное"""
-        if product_id in self.favorites:
-            self.favorites.remove(product_id)
+        """Добавление/удаление из избранного"""
+        if not self.current_user_id:
+            self.show_notification("Сначала войдите в систему!")
+            self.show_auth()
+            return
+
+        if self.db.is_product_in_favorites(self.current_user_id, product_id):
+            # Удаляем из избранного
+            if self.db.remove_from_favorites(self.current_user_id, product_id):
+                self.show_notification("Товар удален из избранного")
         else:
-            self.favorites.add(product_id)
-        self.show_home()  # Обновляем отображение
-        action = "добавлен" if product_id in self.favorites else "удален"
-        self.show_notification(f"Товар {action} в избранное")
+            # Добавляем в избранное
+            if self.db.add_to_favorites(self.current_user_id, product_id):
+                self.show_notification("Товар добавлен в избранное")
+
+        # Обновляем отображение
+        self.show_home()
 
     def add_to_cart(self, product_id):
         """Добавление в корзину"""
@@ -263,13 +278,208 @@ class SportsShopApp:
         else:
             self.show_notification("Ошибка!")
 
+    def show_favorites(self):
+        """Показ избранных товаров"""
+        self.clear_main_frame()
+
+        if not self.current_user_id:
+            ctk.CTkLabel(
+                self.main_frame, text="Войдите в систему, чтобы просмотреть избранное",
+                font=ctk.CTkFont("Arial", 16), text_color="red"
+            ).pack(pady=50)
+            return
+
+        ctk.CTkLabel(
+            self.main_frame, text="Избранное",
+            font=ctk.CTkFont("Arial", 28, weight="bold")
+        ).pack(pady=20)
+
+        favorites = self.db.get_user_favorites(self.current_user_id)
+
+        if not favorites:
+            ctk.CTkLabel(
+                self.main_frame, text="В избранном пока ничего нет",
+                font=ctk.CTkFont("Arial", 16), text_color="#666666"
+            ).pack(pady=50)
+            return
+
+        # Сетка избранных товаров
+        favorites_grid = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        favorites_grid.pack(fill="both", expand=True, padx=40, pady=20)
+
+        # Создаем 4 колонки
+        for i, fav in enumerate(favorites):
+            if i % 4 == 0:
+                row_frame = ctk.CTkFrame(favorites_grid, fg_color="transparent")
+                row_frame.pack(fill="x", pady=10)
+
+            # Создаем карточку товара для избранного
+            product_data = self.db.get_product_by_id(fav[1])  # fav[1] - product_id
+            if product_data:
+                product_card = self.create_favorite_card(row_frame, fav, product_data)
+                product_card.pack(side="left", padx=10)
+
+    def create_favorite_card(self, parent, fav_item, product_data):
+        """Создание карточки для избранного"""
+        cart_id, product_id, name, description, price, size, model, quantity, total, image_path = fav_item
+
+        card = ctk.CTkFrame(
+            parent, width=300, height=400,
+            border_width=1, border_color="#E0E0E0", corner_radius=12
+        )
+        card.pack_propagate(False)
+
+        # Изображение
+        img_frame = ctk.CTkFrame(card, height=180, fg_color="#F8F9FA", corner_radius=8)
+        img_frame.pack(fill="x", padx=10, pady=10)
+        img_frame.pack_propagate(False)
+
+        ctk.CTkLabel(
+            img_frame, text="🛍️", font=ctk.CTkFont("Arial", 36),
+            text_color="#6C757D"
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+        # Кнопка удаления из избранного
+        remove_btn = ctk.CTkButton(
+            img_frame, text="❌",
+            font=ctk.CTkFont("Arial", 12), width=30, height=30,
+            fg_color="white", hover_color="#F0F0F0",
+            text_color="#FF4444",
+            command=lambda pid=product_id: self.remove_from_favorites(pid)
+        )
+        remove_btn.place(relx=0.9, rely=0.2, anchor="center")
+
+        # Информация
+        info_frame = ctk.CTkFrame(card, fg_color="transparent")
+        info_frame.pack(fill="both", expand=True, padx=15, pady=10)
+
+        # Цена
+        ctk.CTkLabel(
+            info_frame, text=f"{price} ₽",
+            font=ctk.CTkFont("Arial", 20, weight="bold"),
+            text_color="#2E86AB"
+        ).pack(anchor="w", pady=(0, 5))
+
+        # Название
+        short_name = name[:35] + "..." if len(name) > 35 else name
+        ctk.CTkLabel(
+            info_frame, text=short_name,
+            font=ctk.CTkFont("Arial", 14), wraplength=250,
+            justify="left", text_color="#333333"
+        ).pack(anchor="w", pady=(0, 8))
+
+        # Кнопка "В корзину"
+        ctk.CTkButton(
+            info_frame, text="В корзину",
+            command=lambda pid=product_id: self.add_to_cart(pid),
+            fg_color="#2E86AB", hover_color="#1B5E7D",
+            height=35, font=ctk.CTkFont("Arial", 14, weight="bold")
+        ).pack(fill="x", pady=(15, 0))
+
+        return card
+
+    def remove_from_favorites(self, product_id):
+        """Удаление из избранного"""
+        if self.db.remove_from_favorites(self.current_user_id, product_id):
+            self.show_notification("Товар удален из избранного")
+            self.show_favorites()  # Обновляем отображение
+
+    def show_cart(self):
+        """Показ корзины"""
+        self.clear_main_frame()
+
+        if not self.current_user_id:
+            ctk.CTkLabel(
+                self.main_frame, text="Войдите в систему, чтобы просмотреть корзину",
+                font=ctk.CTkFont("Arial", 16), text_color="red"
+            ).pack(pady=50)
+            return
+
+        ctk.CTkLabel(
+            self.main_frame, text="Корзина",
+            font=ctk.CTkFont("Arial", 28, weight="bold")
+        ).pack(pady=20)
+
+        cart_items = self.db.get_user_cart(self.current_user_id)
+
+        if not cart_items:
+            ctk.CTkLabel(
+                self.main_frame, text="Корзина пуста",
+                font=ctk.CTkFont("Arial", 16), text_color="#666666"
+            ).pack(pady=50)
+            return
+
+        # Отображение товаров в корзине
+        total_amount = 0
+        for item in cart_items:
+            cart_id, product_id, name, price, quantity, total, image_path = item
+            total_amount += total
+
+            item_frame = ctk.CTkFrame(self.main_frame, height=120)
+            item_frame.pack(fill="x", padx=40, pady=5)
+            item_frame.pack_propagate(False)
+
+            # Информация о товаре
+            info_text = f"{name}\nЦена: {price} ₽ × {quantity} = {total} ₽"
+            ctk.CTkLabel(
+                item_frame, text=info_text,
+                font=ctk.CTkFont("Arial", 14),
+                justify="left"
+            ).pack(side="left", padx=20, pady=20)
+
+            # Кнопка удаления
+            ctk.CTkButton(
+                item_frame, text="❌ Удалить",
+                command=lambda cid=cart_id: self.remove_from_cart(cid),
+                fg_color="#E63946", hover_color="#C1121F",
+                width=100
+            ).pack(side="right", padx=20, pady=20)
+
+        # Общая сумма и кнопка оформления заказа
+        total_frame = ctk.CTkFrame(self.main_frame)
+        total_frame.pack(fill="x", padx=40, pady=20)
+
+        ctk.CTkLabel(
+            total_frame, text=f"Общая сумма: {total_amount} ₽",
+            font=ctk.CTkFont("Arial", 20, weight="bold")
+        ).pack(side="left", padx=20, pady=10)
+
+        ctk.CTkButton(
+            total_frame, text="Оформить заказ",
+            command=lambda: self.create_order(cart_items),
+            fg_color="#2E86AB", hover_color="#1B5E7D",
+            font=ctk.CTkFont("Arial", 16, weight="bold"),
+            height=40
+        ).pack(side="right", padx=20, pady=10)
+
+    def remove_from_cart(self, cart_id):
+        """Удаление из корзины"""
+        if self.db.remove_from_cart(cart_id):
+            self.show_notification("Товар удален из корзины")
+            self.show_cart()  # Обновляем отображение
+
+    def create_order(self, cart_items):
+        """Создание заказа"""
+        order_id = self.db.create_order(self.current_user_id, cart_items)
+        if order_id:
+            self.show_notification(f"Заказ #{order_id} успешно оформлен!")
+            self.show_cart()  # Обновляем корзину
+
     def show_auth(self):
         """Показ авторизации"""
         auth_window = ctk.CTkToplevel(self.window)
         auth_window.title("Вход / Регистрация")
         auth_window.geometry("400x500")
         auth_window.resizable(False, False)
-        auth_window.grab_set()
+        auth_window.transient(self.window)  # Делаем окно модальным
+        auth_window.grab_set()  # Блокируем главное окно
+        auth_window.focus_set()  # Устанавливаем фокус
+
+        # Центрируем окно
+        auth_window.update_idletasks()
+        x = self.window.winfo_x() + (self.window.winfo_width() - auth_window.winfo_width()) // 2
+        y = self.window.winfo_y() + (self.window.winfo_height() - auth_window.winfo_height()) // 2
+        auth_window.geometry(f"+{x}+{y}")
 
         # Вкладки
         tabview = ctk.CTkTabview(auth_window)
@@ -288,6 +498,7 @@ class SportsShopApp:
 
         login_entry = ctk.CTkEntry(login_frame, placeholder_text="Логин", width=300, height=45)
         login_entry.pack(pady=10)
+        login_entry.focus()  # Фокус на поле ввода
 
         password_entry = ctk.CTkEntry(login_frame, placeholder_text="Пароль", show="*", width=300, height=45)
         password_entry.pack(pady=10)
@@ -312,6 +523,13 @@ class SportsShopApp:
                 self.show_notification(f"Добро пожаловать, {user[1]}!")
             else:
                 login_msg.configure(text="Неверный логин или пароль")
+
+        # Обработка нажатия Enter
+        def on_enter(event):
+            try_login()
+
+        login_entry.bind('<Return>', on_enter)
+        password_entry.bind('<Return>', on_enter)
 
         ctk.CTkButton(
             login_frame, text="Войти", command=try_login,
@@ -372,8 +590,13 @@ class SportsShopApp:
             width=300, height=45, fg_color="#2E86AB", hover_color="#1B5E7D"
         ).pack(pady=20)
 
+        # Обработка закрытия окна
+        def on_closing():
+            auth_window.destroy()
+
+        auth_window.protocol("WM_DELETE_WINDOW", on_closing)
+
     def show_notification(self, message):
-        """Уведомление"""
         notification = ctk.CTkLabel(
             self.window, text=message,
             font=ctk.CTkFont("Arial", 14),
@@ -383,23 +606,14 @@ class SportsShopApp:
         notification.place(relx=0.5, rely=0.1, anchor="center")
         self.window.after(2000, notification.destroy)
 
-    # Простые методы для остальных вкладок
     def show_catalog(self):
         self.clear_main_frame()
         ctk.CTkLabel(self.main_frame, text="Каталог", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(pady=50)
-
-    def show_cart(self):
-        self.clear_main_frame()
-        ctk.CTkLabel(self.main_frame, text="Корзина", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(pady=50)
 
     def show_addresses(self):
         self.clear_main_frame()
         ctk.CTkLabel(self.main_frame, text="Адреса магазинов", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(
             pady=50)
-
-    def show_favorites(self):
-        self.clear_main_frame()
-        ctk.CTkLabel(self.main_frame, text="Избранное", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(pady=50)
 
     def run(self):
         self.window.mainloop()
