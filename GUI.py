@@ -16,11 +16,11 @@ class SportsShopApp:
         self.current_user_id = None
         self.current_user_login = None
         self.products = []
-        self.content_frame = None  # Добавляем инициализацию
+        self.content_frame = None
 
         self.load_products_data()
         self.create_navbar()
-        self.create_main_content()  # Этот метод создаст content_frame
+        self.create_main_content()
 
         self.show_home()
 
@@ -113,8 +113,11 @@ class SportsShopApp:
 
     def create_main_content(self):
         """Создание основной области"""
-        # Создаем основной контейнер для контента
-        self.content_frame = ctk.CTkFrame(self.window)
+        self.content_frame = ctk.CTkScrollableFrame(
+            self.window,
+            fg_color="transparent",
+            scrollbar_button_color="#2E86AB"
+        )
         self.content_frame.pack(fill="both", expand=True, padx=0, pady=0)
 
     def clear_main_frame(self):
@@ -128,7 +131,7 @@ class SportsShopApp:
 
         # Баннер
         banner = ctk.CTkFrame(
-            self.content_frame, height=300,  # Изменено с main_frame на content_frame
+            self.content_frame, height=300,
             fg_color="#E63946", corner_radius=0
         )
         banner.pack(fill="x", pady=(0, 30))
@@ -156,19 +159,19 @@ class SportsShopApp:
         """Показ товаров"""
         if not self.products:
             ctk.CTkLabel(
-                self.content_frame, text="Товары не найдены",  # Изменено с main_frame на content_frame
+                self.content_frame, text="Товары не найдены",
                 font=ctk.CTkFont("Arial", 16), text_color="red"
             ).pack(pady=50)
             return
 
         # Заголовок
         ctk.CTkLabel(
-            self.content_frame, text="Популярные товары",  # Изменено с main_frame на content_frame
+            self.content_frame, text="Популярные товары",
             font=ctk.CTkFont("Arial", 28, weight="bold")
         ).pack(pady=20)
 
         # Сетка товаров
-        products_grid = ctk.CTkFrame(self.content_frame, fg_color="transparent")  # Изменено
+        products_grid = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         products_grid.pack(fill="both", expand=True, padx=40, pady=20)
 
         # Создаем 4 колонки
@@ -298,13 +301,13 @@ class SportsShopApp:
 
         if not self.current_user_id:
             ctk.CTkLabel(
-                self.main_frame, text="Войдите в систему, чтобы просмотреть избранное",
+                self.content_frame, text="Войдите в систему, чтобы просмотреть избранное",
                 font=ctk.CTkFont("Arial", 16), text_color="red"
             ).pack(pady=50)
             return
 
         ctk.CTkLabel(
-            self.main_frame, text="Избранное",
+            self.content_frame, text="Избранное",
             font=ctk.CTkFont("Arial", 28, weight="bold")
         ).pack(pady=20)
 
@@ -312,13 +315,13 @@ class SportsShopApp:
 
         if not favorites:
             ctk.CTkLabel(
-                self.main_frame, text="В избранном пока ничего нет",
+                self.content_frame, text="В избранном пока ничего нет",
                 font=ctk.CTkFont("Arial", 16), text_color="#666666"
             ).pack(pady=50)
             return
 
         # Сетка избранных товаров
-        favorites_grid = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        favorites_grid = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         favorites_grid.pack(fill="both", expand=True, padx=40, pady=20)
 
         # Создаем 4 колонки
@@ -404,13 +407,13 @@ class SportsShopApp:
 
         if not self.current_user_id:
             ctk.CTkLabel(
-                self.main_frame, text="Войдите в систему, чтобы просмотреть корзину",
+                self.content_frame, text="Войдите в систему, чтобы просмотреть корзину",
                 font=ctk.CTkFont("Arial", 16), text_color="red"
             ).pack(pady=50)
             return
 
         ctk.CTkLabel(
-            self.main_frame, text="Корзина",
+            self.content_frame, text="Корзина",
             font=ctk.CTkFont("Arial", 28, weight="bold")
         ).pack(pady=20)
 
@@ -419,13 +422,13 @@ class SportsShopApp:
 
         if not cart_items:
             ctk.CTkLabel(
-                self.main_frame, text="Корзина пуста",
+                self.content_frame, text="Корзина пуста",
                 font=ctk.CTkFont("Arial", 16), text_color="#666666"
             ).pack(pady=50)
             return
 
         # Основной контейнер корзины
-        cart_container = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        cart_container = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         cart_container.pack(fill="both", expand=True, padx=40, pady=20)
 
         # Левая часть - товары
@@ -670,7 +673,7 @@ class SportsShopApp:
             return
 
         ctk.CTkLabel(
-            self.main_frame, text="История заказов",
+            self.content_frame, text="История заказов",
             font=ctk.CTkFont("Arial", 28, weight="bold")
         ).pack(pady=20)
 
@@ -678,7 +681,7 @@ class SportsShopApp:
 
         if not orders:
             ctk.CTkLabel(
-                self.main_frame, text="У вас пока нет заказов",
+                self.content_frame, text="У вас пока нет заказов",
                 font=ctk.CTkFont("Arial", 16), text_color="#666666"
             ).pack(pady=50)
             return
@@ -687,12 +690,13 @@ class SportsShopApp:
         for order in orders:
             order_id, order_date, total_amount, items = order
 
-            order_frame = ctk.CTkFrame(self.main_frame, height=100)
+            order_frame = ctk.CTkFrame(self.content_frame, height=100)
             order_frame.pack(fill="x", padx=40, pady=10)
             order_frame.pack_propagate(False)
 
             # Информация о заказе
-            order_info = "Заказ #{} от {}\nТовары: {}\nСумма: {:.2f} ₽".format(order_id, order_date, items, total_amount)
+            order_info = "Заказ #{} от {}\nТовары: {}\nСумма: {:.2f} ₽".format(order_id, order_date, items,
+                                                                               total_amount)
             ctk.CTkLabel(
                 order_frame, text=order_info,
                 font=ctk.CTkFont("Arial", 14),
@@ -908,8 +912,10 @@ class SportsShopApp:
     def show_addresses(self):
         """Показ адресов магазинов"""
         self.clear_main_frame()
-        ctk.CTkLabel(self.main_frame, text="Адреса магазинов", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(
-            pady=50)
+        ctk.CTkLabel(
+            self.content_frame, text="Адреса магазинов",
+            font=ctk.CTkFont("Arial", 28, weight="bold")
+        ).pack(pady=50)
 
     def run(self):
         self.window.mainloop()

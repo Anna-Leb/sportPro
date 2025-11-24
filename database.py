@@ -296,3 +296,45 @@ class Database:
             WHERE p.supplier_id = ?
         '''
         return self.execute_query(query, (supplier_id,))
+
+
+# Добавьте эти методы в класс Database в database.py
+
+def get_unique_colors(self):
+    """Получает уникальные цвета товаров"""
+    query = 'SELECT DISTINCT color FROM products WHERE color IS NOT NULL'
+    return self.execute_query(query)
+
+
+def get_unique_sizes(self):
+    """Получает уникальные размеры товаров"""
+    query = 'SELECT DISTINCT size FROM products WHERE size IS NOT NULL'
+    return self.execute_query(query)
+
+
+def get_products_grouped(self, filters=None):
+    """Получает товары сгруппированные по названию"""
+    query = '''
+        SELECT 
+            name,
+            description,
+            MIN(price) as min_price,
+            MAX(price) as max_price,
+            GROUP_CONCAT(DISTINCT color) as colors,
+            GROUP_CONCAT(DISTINCT size) as sizes,
+            GROUP_CONCAT(DISTINCT model) as models,
+            category_name,
+            supplier_name
+        FROM (
+            SELECT 
+                p.product_id, p.name, p.description, p.price, p.size, p.model,
+                c.name as category_name, s.name as supplier_name,
+                COALESCE(p.color, 'Не указан') as color
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.category_id
+            LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
+        )
+        GROUP BY name, description, category_name, supplier_name
+    '''
+
+    return self.execute_query(query)
