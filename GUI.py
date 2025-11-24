@@ -15,8 +15,6 @@ class SportsShopApp:
         self.current_user_id = None
         self.current_user_login = None
         self.products = []
-        # Убираем локальное хранение избранного, будем работать с БД
-        # self.favorites = set()
 
         self.load_products_data()
         self.create_navbar()
@@ -466,14 +464,175 @@ class SportsShopApp:
             self.show_cart()  # Обновляем корзину
 
     def show_auth(self):
-        """Показ авторизации"""
+        """Показ авторизации или профиля"""
+        if self.current_user_id:
+            # Если пользователь авторизован, показываем меню профиля
+            self.show_profile_menu()
+        else:
+            # Если не авторизован, показываем окно входа
+            self.show_auth_window()
+
+    def show_profile_menu(self):
+        """Показ меню профиля"""
+        # Создаем небольшое всплывающее окно
+        profile_menu = ctk.CTkToplevel(self.window)
+        profile_menu.title("Профиль")
+        profile_menu.geometry("250x200")
+        profile_menu.resizable(False, False)
+        profile_menu.transient(self.window)
+        profile_menu.grab_set()
+        profile_menu.focus_set()
+
+        # Центрируем окно
+        profile_menu.update_idletasks()
+        x = self.window.winfo_x() + (self.window.winfo_width() - profile_menu.winfo_width()) // 2
+        y = self.window.winfo_y() + (self.window.winfo_height() - profile_menu.winfo_height()) // 2
+        profile_menu.geometry(f"+{x}+{y}")
+
+        # Заголовок с именем пользователя
+        ctk.CTkLabel(
+            profile_menu,
+            text=f"👤 {self.current_user_login}",
+            font=ctk.CTkFont("Arial", 16, weight="bold")
+        ).pack(pady=15)
+
+        # Кнопки меню
+        menu_buttons = [
+            ("📦 История заказов", self.show_orders),
+            ("🛒 Корзина", self.show_cart),
+            ("❤️ Избранное", self.show_favorites),
+            ("🚪 Выйти", lambda: self.logout(profile_menu))
+        ]
+
+        for text, command in menu_buttons:
+            btn = ctk.CTkButton(
+                profile_menu,
+                text=text,
+                command=command,
+                width=200,
+                height=35,
+                fg_color="transparent",
+                hover_color="#F0F0F0",
+                text_color="#333333",
+                font=ctk.CTkFont("Arial", 14)
+            )
+            btn.pack(pady=5)
+
+    def show_orders(self):
+        """Показ истории заказов"""
+        self.clear_main_frame()
+
+        if not self.current_user_id:
+            self.show_notification("Войдите в систему!")
+            return
+
+        ctk.CTkLabel(
+            self.main_frame, text="История заказов",
+            font=ctk.CTkFont("Arial", 28, weight="bold")
+        ).pack(pady=20)
+
+        orders = self.db.get_user_orders(self.current_user_id)
+
+        if not orders:
+            ctk.CTkLabel(
+                self.main_frame, text="У вас пока нет заказов",
+                font=ctk.CTkFont("Arial", 16), text_color="#666666"
+            ).pack(pady=50)
+            return
+
+        # Отображаем заказы
+        for order in orders:
+            order_id, order_date, total_amount, items = order
+
+            order_frame = ctk.CTkFrame(self.main_frame, height=100)
+            order_frame.pack(fill="x", padx=40, pady=10)
+            order_frame.pack_propagate(False)
+
+            # Информация о заказе
+            order_info = f"Заказ #{order_id} от {order_date}\nТовары: {items}\nСумма: {total_amount} ₽"
+
+            ctk.CTkLabel(
+                order_frame, text=order_info,
+                font=ctk.CTkFont("Arial", 14),
+                justify="left"
+            ).pack(side="left", padx=20, pady=20)
+
+            # Кнопка деталей заказа
+            ctk.CTkButton(
+                order_frame, text="📋 Детали",
+                command=lambda oid=order_id: self.show_order_details(oid),
+                width=100, height=30
+            ).pack(side="right", padx=20, pady=20)
+
+    def show_order_details(self, order_id):
+        """Показ деталей заказа"""
+        details_window = ctk.CTkToplevel(self.window)
+        details_window.title(f"Детали заказа #{order_id}")
+        details_window.geometry("500x400")
+        details_window.transient(self.window)
+        details_window.grab_set()
+
+        # Центрируем окно
+        details_window.update_idletasks()
+        x = self.window.winfo_x() + (self.window.winfo_width() - details_window.winfo_width()) // 2
+        y = self.window.winfo_y() + (self.window.winfo_height() - details_window.winfo_height()) // 2
+        details_window.geometry(f"+{x}+{y}")
+
+        ctk.CTkLabel(
+            details_window, text=f"Детали заказа #{order_id}",
+            font=ctk.CTkFont("Arial", 20, weight="bold")
+        ).pack(pady=20)
+
+        # Получаем детали заказа из БД
+        order_details = self.db.get_order_details(order_id)
+
+        if order_details:
+            total = 0
+            for item in order_details:
+                name, price, quantity, item_total = item
+                total += item_total
+
+                item_text = f"{name}\nЦена: {price} ₽ × {quantity} = {item_total} ₽"
+                ctk.CTkLabel(
+                    details_window, text=item_text,
+                    font=ctk.CTkFont("Arial", 14),
+                    justify="left"
+                ).pack(pady=5, padx=20, anchor="w")
+
+            # Общая сумма
+            ctk.CTkLabel(
+                details_window, text=f"Общая сумма: {total} ₽",
+                font=ctk.CTkFont("Arial", 16, weight="bold"),
+                text_color="#2E86AB"
+            ).pack(pady=20)
+        else:
+            ctk.CTkLabel(
+                details_window, text="Детали заказа не найдены",
+                font=ctk.CTkFont("Arial", 14),
+                text_color="red"
+            ).pack(pady=20)
+
+    def logout(self, menu_window=None):
+        """Выход из системы"""
+        self.current_user_id = None
+        self.current_user_login = None
+        self.profile_btn.configure(text="👤 Войти")
+
+        if menu_window:
+            menu_window.destroy()
+
+        self.show_notification("Вы вышли из системы")
+        self.show_home()
+
+    def show_auth_window(self):
+        """Показ окна авторизации"""
         auth_window = ctk.CTkToplevel(self.window)
         auth_window.title("Вход / Регистрация")
         auth_window.geometry("400x500")
         auth_window.resizable(False, False)
-        auth_window.transient(self.window)  # Делаем окно модальным
-        auth_window.grab_set()  # Блокируем главное окно
-        auth_window.focus_set()  # Устанавливаем фокус
+        auth_window.transient(self.window)
+        auth_window.grab_set()
+        auth_window.focus_set()
 
         # Центрируем окно
         auth_window.update_idletasks()
@@ -498,7 +657,7 @@ class SportsShopApp:
 
         login_entry = ctk.CTkEntry(login_frame, placeholder_text="Логин", width=300, height=45)
         login_entry.pack(pady=10)
-        login_entry.focus()  # Фокус на поле ввода
+        login_entry.focus()
 
         password_entry = ctk.CTkEntry(login_frame, placeholder_text="Пароль", show="*", width=300, height=45)
         password_entry.pack(pady=10)
@@ -524,7 +683,6 @@ class SportsShopApp:
             else:
                 login_msg.configure(text="Неверный логин или пароль")
 
-        # Обработка нажатия Enter
         def on_enter(event):
             try_login()
 
@@ -574,7 +732,6 @@ class SportsShopApp:
                 return
 
             if self.db.create_user(login, password):
-                # Автоматический вход после регистрации
                 user = self.db.get_user_by_credentials(login, password)
                 if user:
                     self.current_user_id = user[0]
@@ -590,13 +747,13 @@ class SportsShopApp:
             width=300, height=45, fg_color="#2E86AB", hover_color="#1B5E7D"
         ).pack(pady=20)
 
-        # Обработка закрытия окна
         def on_closing():
             auth_window.destroy()
 
         auth_window.protocol("WM_DELETE_WINDOW", on_closing)
 
     def show_notification(self, message):
+        """Уведомление"""
         notification = ctk.CTkLabel(
             self.window, text=message,
             font=ctk.CTkFont("Arial", 14),
@@ -607,10 +764,12 @@ class SportsShopApp:
         self.window.after(2000, notification.destroy)
 
     def show_catalog(self):
+        """Показ каталога"""
         self.clear_main_frame()
         ctk.CTkLabel(self.main_frame, text="Каталог", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(pady=50)
 
     def show_addresses(self):
+        """Показ адресов магазинов"""
         self.clear_main_frame()
         ctk.CTkLabel(self.main_frame, text="Адреса магазинов", font=ctk.CTkFont("Arial", 28, weight="bold")).pack(
             pady=50)
