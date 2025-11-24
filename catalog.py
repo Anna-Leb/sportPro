@@ -60,16 +60,17 @@ class CatalogWindow:
         # Фильтр по размерам
         self.create_size_filter()
 
-        # Кнопка применения фильтров
-        ctk.CTkButton(
+        # Кнопка применения фильтров внизу
+        apply_button = ctk.CTkButton(
             self.filters_frame,
             text="Применить фильтры",
             command=self.apply_filters,
             fg_color="#2E86AB",
             hover_color="#1B5E7D",
-            height=35,
-            font=ctk.CTkFont("Arial", 14)
-        ).pack(fill="x", padx=15, pady=15, side="bottom")
+            height=40,
+            font=ctk.CTkFont("Arial", 14, weight="bold")
+        )
+        apply_button.pack(fill="x", padx=15, pady=20, side="bottom")
 
     def create_price_filter(self):
         """Создает фильтр по цене"""
@@ -237,56 +238,89 @@ class CatalogWindow:
     def load_products(self):
         """Загружает товары из базы данных"""
         try:
+            print("=== НАЧАЛО ЗАГРУЗКИ ТОВАРОВ ===")
             self.all_products = self.db.get_products_grouped()
+            print(f"Получено товаров из базы: {len(self.all_products)}")
+
+            if self.all_products:
+                print("Первый товар для примера:")
+                print(self.all_products[0])
+
             self.apply_filters()
+
         except Exception as e:
             print(f"Ошибка загрузки товаров: {e}")
+            import traceback
+            traceback.print_exc()
             self.show_error("Ошибка загрузки каталога")
 
     def apply_filters(self):
         """Применяет фильтры к товарам"""
         try:
+            if not self.all_products:
+                print("Нет товаров для фильтрации!")
+                self.filtered_products = []
+                self.display_products()
+                return
+
             self.update_selected_colors()
             self.update_selected_sizes()
 
             filtered = []
 
             for product in self.all_products:
-                name, description, min_price, max_price, colors, sizes, category, variants_count, avg_rating = product
-
-                # Фильтр по цене
                 try:
-                    price_min_val = float(self.price_min.get() or 0)
-                    price_max_val = float(self.price_max.get() or 15000)
+                    # Распаковываем с учетом product_id как первого элемента
+                    if len(product) == 10:  # Новый формат с product_id
+                        product_id, name, description, min_price, max_price, colors, sizes, category, variants_count, avg_rating = product
+                    else:  # Старый формат без product_id
+                        name, description, min_price, max_price, colors, sizes, category, variants_count, avg_rating = product
+                        product_id = None
 
-                    if min_price < price_min_val or (max_price and max_price > price_max_val):
+                    # Фильтр по цене
+                    try:
+                        price_min_val = float(self.price_min.get() or 0)
+                        price_max_val = float(self.price_max.get() or 15000)
+
+                        # Проверяем цену
+                        if min_price is None or min_price < price_min_val:
+                            continue
+                        if max_price and max_price > price_max_val:
+                            continue
+                    except (ValueError, TypeError) as e:
+                        print(f"Ошибка фильтрации по цене: {e}")
                         continue
-                except ValueError:
-                    pass
 
-                # Фильтр по категории
-                if self.selected_category.get() != "Все" and category != self.selected_category.get():
+                    # Фильтр по категории
+                    if self.selected_category.get() != "Все" and category != self.selected_category.get():
+                        continue
+
+                    # Фильтр по цветам
+                    if self.selected_colors:
+                        product_colors = colors.split(',') if colors else []
+                        if not any(color in product_colors for color in self.selected_colors):
+                            continue
+
+                    # Фильтр по размерам
+                    if self.selected_sizes:
+                        product_sizes = sizes.split(',') if sizes else []
+                        if not any(size in product_sizes for size in self.selected_sizes):
+                            continue
+
+                    filtered.append(product)
+
+                except Exception as e:
+                    print(f"Ошибка обработки товара {product}: {e}")
                     continue
 
-                # Фильтр по цветам
-                if self.selected_colors:
-                    product_colors = colors.split(',') if colors else []
-                    if not any(color in product_colors for color in self.selected_colors):
-                        continue
-
-                # Фильтр по размерам
-                if self.selected_sizes:
-                    product_sizes = sizes.split(',') if sizes else []
-                    if not any(size in product_sizes for size in self.selected_sizes):
-                        continue
-
-                filtered.append(product)
-
             self.filtered_products = filtered
+            print(f"После фильтрации осталось товаров: {len(self.filtered_products)}")
             self.display_products()
 
         except Exception as e:
             print(f"Ошибка применения фильтров: {e}")
+            import traceback
+            traceback.print_exc()
 
     def display_products(self):
         """Отображает отфильтрованные товары"""
@@ -313,101 +347,132 @@ class CatalogWindow:
 
     def create_product_card(self, parent, product):
         """Создает карточку товара"""
-        name, description, min_price, max_price, colors, sizes, category, variants_count, avg_rating = product
+        try:
+            # Распаковываем с учетом product_id как первого элемента
+            if len(product) == 10:  # Новый формат с product_id
+                product_id, name, description, min_price, max_price, colors, sizes, category, variants_count, avg_rating = product
+            else:  # Старый формат без product_id
+                name, description, min_price, max_price, colors, sizes, category, variants_count, avg_rating = product
+                product_id = None
 
-        card = ctk.CTkFrame(
-            parent,
-            width=250,
-            height=380,
-            border_width=1,
-            border_color="#E0E0E0",
-            corner_radius=12
-        )
-        card.pack_propagate(False)
+            print(f"Создание карточки для: {name}, ID: {product_id}")
 
-        # Изображение
-        img_frame = ctk.CTkFrame(card, height=150, fg_color="#F8F9FA", corner_radius=8)
-        img_frame.pack(fill="x", padx=10, pady=10)
-        img_frame.pack_propagate(False)
+            card = ctk.CTkFrame(
+                parent,
+                width=250,
+                height=380,
+                border_width=1,
+                border_color="#E0E0E0",
+                corner_radius=12
+            )
+            card.pack_propagate(False)
 
-        # Эмодзи для категории
-        emoji_map = {'Обувь': '👟', 'Одежда': '👕', 'Аксессуары': '🎒'}
-        emoji = emoji_map.get(category, '🛍️')
+            # Изображение
+            img_frame = ctk.CTkFrame(card, height=150, fg_color="#F8F9FA", corner_radius=8)
+            img_frame.pack(fill="x", padx=10, pady=10)
+            img_frame.pack_propagate(False)
 
-        ctk.CTkLabel(
-            img_frame,
-            text=emoji,
-            font=ctk.CTkFont("Arial", 28),
-            text_color="#6C757D"
-        ).place(relx=0.5, rely=0.5, anchor="center")
+            # Эмодзи для категории
+            emoji_map = {'Обувь': '👟', 'Одежда': '👕', 'Аксессуары': '🎒'}
+            emoji = emoji_map.get(category, '🛍️')
 
-        # Информация
-        info_frame = ctk.CTkFrame(card, fg_color="transparent")
-        info_frame.pack(fill="both", expand=True, padx=12, pady=8)
+            ctk.CTkLabel(
+                img_frame,
+                text=emoji,
+                font=ctk.CTkFont("Arial", 28),
+                text_color="#6C757D"
+            ).place(relx=0.5, rely=0.5, anchor="center")
 
-        # Категория
-        ctk.CTkLabel(
-            info_frame,
-            text=category,
-            font=ctk.CTkFont("Arial", 11),
-            text_color="#666666"
-        ).pack(anchor="w")
+            # Кнопка избранного
+            is_fav = False
+            if self.user_id and product_id:
+                is_fav = self.db.is_product_in_favorites(self.user_id, product_id)
 
-        # Название товара (кликабельное)
-        name_label = ctk.CTkLabel(
-            info_frame,
-            text=name,
-            font=ctk.CTkFont("Arial", 14, weight="bold"),
-            text_color="#333333",
-            cursor="hand2",
-            wraplength=220
-        )
-        name_label.pack(anchor="w", pady=(3, 0))
-        name_label.bind("<Button-1>", lambda e, pname=name: self.show_product_detail(pname))
+            fav_button = ctk.CTkButton(
+                img_frame,
+                text="❤️" if is_fav else "🤍",
+                width=30,
+                height=30,
+                fg_color="white",
+                hover_color="#F0F0F0",
+                text_color="#FF4444" if is_fav else "#666666",
+                font=ctk.CTkFont("Arial", 12),
+                command=lambda pid=product_id, pname=name: self.toggle_favorite(pid, pname)
+            )
+            fav_button.place(relx=0.85, rely=0.2, anchor="center")
 
-        # Характеристики
-        if colors:
+            # Информация
+            info_frame = ctk.CTkFrame(card, fg_color="transparent")
+            info_frame.pack(fill="both", expand=True, padx=12, pady=8)
+
+            # Категория
             ctk.CTkLabel(
                 info_frame,
-                text=f"Цвет: {colors}",
+                text=category if category else "Без категории",
                 font=ctk.CTkFont("Arial", 11),
                 text_color="#666666"
-            ).pack(anchor="w", pady=1)
+            ).pack(anchor="w")
 
-        if sizes:
-            ctk.CTkLabel(
+            # Название товара (кликабельное)
+            name_label = ctk.CTkLabel(
                 info_frame,
-                text=f"Размер: {sizes}",
-                font=ctk.CTkFont("Arial", 11),
-                text_color="#666666"
-            ).pack(anchor="w", pady=1)
+                text=name,
+                font=ctk.CTkFont("Arial", 14, weight="bold"),
+                text_color="#333333",
+                cursor="hand2",
+                wraplength=220
+            )
+            name_label.pack(anchor="w", pady=(3, 0))
+            name_label.bind("<Button-1>", lambda e, pname=name: self.show_product_detail(pname))
 
-        # Цена и кнопка
-        price_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-        price_frame.pack(fill="x", pady=(10, 0))
+            # Характеристики
+            if colors and colors != 'None':
+                ctk.CTkLabel(
+                    info_frame,
+                    text=f"Цвет: {colors}",
+                    font=ctk.CTkFont("Arial", 11),
+                    text_color="#666666"
+                ).pack(anchor="w", pady=1)
 
-        ctk.CTkLabel(
-            price_frame,
-            text=f"{min_price} ₽",
-            font=ctk.CTkFont("Arial", 16, weight="bold"),
-            text_color="#2E86AB"
-        ).pack(side="left")
+            if sizes and sizes != 'None':
+                ctk.CTkLabel(
+                    info_frame,
+                    text=f"Размер: {sizes}",
+                    font=ctk.CTkFont("Arial", 11),
+                    text_color="#666666"
+                ).pack(anchor="w", pady=1)
 
-        ctk.CTkButton(
-            price_frame,
-            text="Подробнее",
-            command=lambda pname=name: self.show_product_detail(pname),
-            width=80,
-            height=28,
-            fg_color="transparent",
-            hover_color="#F0F0F0",
-            text_color="#2E86AB",
-            border_color="#2E86AB",
-            border_width=1,
-            font=ctk.CTkFont("Arial", 12)
-        ).pack(side="right")
+            # Цена и кнопка
+            price_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+            price_frame.pack(fill="x", pady=(10, 0))
 
-        return card
+            ctk.CTkLabel(
+                price_frame,
+                text=f"{min_price} ₽",
+                font=ctk.CTkFont("Arial", 16, weight="bold"),
+                text_color="#2E86AB"
+            ).pack(side="left")
+
+            # Кнопка "В корзину"
+            ctk.CTkButton(
+                price_frame,
+                text="В корзину",
+                command=lambda pid=product_id, pname=name: self.add_to_cart(pid, pname),
+                width=80,
+                height=28,
+                fg_color="#2E86AB",
+                hover_color="#1B5E7D",
+                font=ctk.CTkFont("Arial", 12, weight="bold")
+            ).pack(side="right")
+
+            return card
+
+        except Exception as e:
+            print(f"Ошибка создания карточки товара: {e}")
+            # Возвращаем пустую карточку в случае ошибки
+            error_card = ctk.CTkFrame(parent, width=250, height=380)
+            ctk.CTkLabel(error_card, text="Ошибка загрузки").pack(expand=True)
+            return error_card
 
     def update_selected_colors(self):
         """Обновляет выбранные цвета"""
@@ -445,3 +510,64 @@ class CatalogWindow:
             text_color="red"
         ).pack()
 
+    def get_product_id_by_name(self, product_name):
+        """Получает ID товара по названию"""
+        try:
+            query = "SELECT product_id FROM products WHERE name = ? LIMIT 1"
+            result = self.db.execute_query(query, (product_name,))
+            return result[0][0] if result else None
+        except Exception as e:
+            print(f"Ошибка получения ID товара: {e}")
+            return None
+
+    def toggle_favorite(self, product_id, product_name):
+        """Добавление/удаление из избранного"""
+        if not self.user_id:
+            self.show_notification("Сначала войдите в систему!")
+            return
+
+        if product_id is None:
+            self.show_notification("Ошибка: товар не найден")
+            return
+
+        if self.db.is_product_in_favorites(self.user_id, product_id):
+            # Удаляем из избранного
+            if self.db.remove_from_favorites(self.user_id, product_id):
+                self.show_notification("Товар удален из избранного")
+                # Обновляем отображение
+                self.apply_filters()
+        else:
+            # Добавляем в избранное
+            if self.db.add_to_favorites(self.user_id, product_id):
+                self.show_notification("Товар добавлен в избранное")
+                # Обновляем отображение
+                self.apply_filters()
+
+    def add_to_cart(self, product_id, product_name):
+        """Добавление в корзину"""
+        if not self.user_id:
+            self.show_notification("Сначала войдите в систему!")
+            return
+
+        if product_id is None:
+            self.show_notification("Ошибка: товар не найден")
+            return
+
+        if self.db.add_to_cart(self.user_id, product_id):
+            self.show_notification(f"Товар '{product_name}' добавлен в корзину!")
+        else:
+            self.show_notification("Ошибка добавления в корзину")
+
+    def show_notification(self, message):
+        """Показывает уведомление"""
+        # Создаем временное уведомление
+        notification = ctk.CTkLabel(
+            self.parent,
+            text=message,
+            font=ctk.CTkFont("Arial", 14),
+            fg_color="#2E86AB",
+            text_color="white",
+            corner_radius=10
+        )
+        notification.place(relx=0.5, rely=0.1, anchor="center")
+        self.parent.after(2000, notification.destroy)
